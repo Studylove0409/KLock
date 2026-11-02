@@ -153,9 +153,16 @@ final class HistoryWindowController: NSWindowController {
     nameLabel.lineBreakMode = .byTruncatingTail
     nameLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
+    let statusLabel = NSTextField(labelWithString: record.status.label)
+    statusLabel.font = NSFont.systemFont(ofSize: 10, weight: .semibold)
+    statusLabel.textColor = Self.statusColor(record.status)
+    statusLabel.alignment = .right
+    statusLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+    let moment = record.finishedAt ?? record.createdAt
     let metaLabel = NSTextField(
       labelWithString:
-        "\(Self.durationText(record.duration))  ·  \(Self.dateText(record.finishedAt))"
+        "\(Self.durationText(record.duration))  ·  \(Self.dateText(moment))"
     )
     metaLabel.font = NSFont.monospacedDigitSystemFont(
       ofSize: 11, weight: .regular)
@@ -163,12 +170,20 @@ final class HistoryWindowController: NSWindowController {
     metaLabel.alignment = .right
     metaLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
-    let row = NSStackView(views: [nameLabel, metaLabel])
+    let row = NSStackView(views: [nameLabel, statusLabel, metaLabel])
     row.orientation = .horizontal
     row.alignment = .centerY
-    row.spacing = 12
+    row.spacing = 10
     row.edgeInsets = NSEdgeInsets(top: 11, left: 20, bottom: 11, right: 20)
     return row
+  }
+
+  private static func statusColor(_ status: TimerRecordStatus) -> NSColor {
+    switch status {
+    case .active: return .controlAccentColor
+    case .finished: return .secondaryLabelColor
+    case .cancelled: return .tertiaryLabelColor
+    }
   }
 
   private func makeSeparator() -> NSView {

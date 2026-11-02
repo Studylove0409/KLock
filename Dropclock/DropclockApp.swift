@@ -42,7 +42,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   internal var activeTimers:
   [(
     id: UUID, name: String?, startTime: Date, duration: TimeInterval,
-    reminderId: String?
+    reminderId: String?, pausedRemaining: TimeInterval?, recordId: UUID?
   )] = []
   internal var pendingTimerData: (startTime: Date, duration: TimeInterval)?
   
@@ -95,7 +95,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         startTime: timer.startTime,
         duration: timer.duration,
         reminderId: timer.reminderId,
-        isFinished: finishedTimerIds.contains(timer.id)
+        isFinished: finishedTimerIds.contains(timer.id),
+        pausedRemaining: timer.pausedRemaining,
+        recordId: timer.recordId?.uuidString
       )
     }
     
@@ -124,7 +126,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: savedTimer.name,
             startTime: savedTimer.startTime,
             duration: savedTimer.duration,
-            reminderId: savedTimer.reminderId
+            reminderId: savedTimer.reminderId,
+            pausedRemaining: savedTimer.pausedRemaining,
+            recordId: savedTimer.recordId.flatMap { UUID(uuidString: $0) }
           ))
 
         // 已结束的条目（等用户手动停止循环闹铃）只恢复状态，
@@ -215,21 +219,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       let nextTimer = activeTimers
         .filter { !finishedTimerIds.contains($0.id) }
         .min { timer1, timer2 in
-          let endTime1 = timer1.startTime.addingTimeInterval(timer1.duration)
-          let endTime2 = timer2.startTime.addingTimeInterval(timer2.duration)
-          return endTime1 < endTime2
+          remainingSeconds(
+            startTime: timer1.startTime, duration: timer1.duration,
+            pausedRemaining: timer1.pausedRemaining)
+            < remainingSeconds(
+              startTime: timer2.startTime, duration: timer2.duration,
+              pausedRemaining: timer2.pausedRemaining)
         }
       
       if let timer = nextTimer {
-        let now = Date()
-        let endTime = timer.startTime.addingTimeInterval(timer.duration)
-        let remainingTime = endTime.timeIntervalSince(now)
+        let remainingTime = remainingSeconds(
+          startTime: timer.startTime, duration: timer.duration,
+          pausedRemaining: timer.pausedRemaining)
         
         if remainingTime > 0 {
           let formattedTime = TimerTextFormatter.duration(remainingTime)
           let displayName = truncatedName(
             timer.name ?? "计时器", maxWidth: Self.menuBarNameWidth)
-          let displayText = "\(displayName): \(formattedTime)"
+          let pausedMark = timer.pausedRemaining == nil ? "" : " ⏸"
+          let displayText = "\(displayName): \(formattedTime)\(pausedMark)"
           
           statusItem?.button?.image = nil
           statusItem?.button?.title = displayText
@@ -384,11 +392,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  /// 剩余秒数（暂停时返回冻结值）。
+  private func remainingSeconds(
+    startTime: Date, duration: TimeInterval, pausedRemaining: TimeInterval?
+  ) -> TimeInterval {
+    TimerMath.remaining(
+      startTime: startTime, duration: duration,
+      pausedRemaining: pausedRemaining, now: Date())
+  }
+
   private func checkExpiredTimers() {
     let now = Date()
     let expired = activeTimers.filter { timer in
-      !finishedTimerIds.contains(timer.id)
-        && now >= timer.startTime.addingTimeInterval(timer.duration)
+      guard !finishedTimerIds.contains(timer.id),
+        timer.pausedRemaining == nil
+      else { return false }
+      return now >= timer.startTime.addingTimeInterval(timer.duration)
     }
     for timer in expired {
       timerFinished(id: timer.id)
@@ -435,13 +454,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
       }
       
+      let recordId = HistoryStore.shared.recordCreated(
+        name: name ?? "计时器", duration: timerData.duration, at: startTime)
+
       activeTimers.append(
         (
           id: timerId,
           name: name,
           startTime: startTime,
           duration: timerData.duration,
-          reminderId: reminderId
+          reminderId: reminderId,
+          pausedRemaining: nil,
+          recordId: recordId
         ))
       
       refreshTickTimer()
@@ -509,10 +533,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       && defaults.bool(forKey: "loopAlarmUntilStopped")
     SoundManager.shared.playSelectedAlarmIfEnabled(loop: shouldLoopAlarm)
 
-    HistoryStore.shared.add(
-      name: timerName ?? "计时器",
-      duration: timer.duration,
-      finishedAt: Date())
+    if let recordId = timer.recordId {
+      HistoryStore.shared.markFinished(recordId: recordId)
+    }
 
     if shouldLoopAlarm {
       // 循环闹铃时保留在列表里并标记为已结束，用户点「删除」即可停止。
@@ -598,10 +621,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     updateMenu()
   }
 
-  @objc func cancelTimer(sender: NSMenuItem) {
-    // 按 UUID 定位，避免菜单每秒重建期间计时器列表变动导致删错行。
-    guard let timerId = sender.representedObject as? UUID,
-      let timerIndex = activeTimers.firstIndex(where: { $0.id == timerId })
+  func deleteTimer(id timerId: UUID) {
+    // 按 UUID 定位，避免菜单重建期间计时器列表变动导致删错行。
+    guard let timerIndex = activeTimers.firstIndex(where: { $0.id == timerId })
     else {
       return
     }
@@ -623,6 +645,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     finishedTimerIds.remove(timerId)
+    if let recordId = timerToRemove.recordId {
+      HistoryStore.shared.markCancelled(recordId: recordId)
+    }
     activeTimers.remove(at: timerIndex)
     refreshTickTimer()
 
@@ -637,16 +662,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     SoundManager.shared.stopActiveSound()
     saveTimers()
     updateStatusIcon()
-    
-    if sender.menu != nil && !sender.isHidden {
-      sender.menu?.cancelTracking()
-    }
-    
+
     updateMenu()
   }
   
   @objc func preferences() {
     PreferencesWindowController.shared.showWindow()
+  }
+
+  /// 暂停 / 继续某个计时器。
+  func togglePause(id timerId: UUID) {
+    guard let index = activeTimers.firstIndex(where: { $0.id == timerId })
+    else { return }
+
+    let timer = activeTimers[index]
+    // 已结束的条目不允许再切换（它只是在等用户清理）
+    guard !finishedTimerIds.contains(timerId) else { return }
+
+    if let frozen = timer.pausedRemaining {
+      // 继续：把 startTime 往前挪，使剩余时间正好等于冻结值
+      let newStart = TimerMath.resumedStartTime(
+        duration: timer.duration, remaining: frozen, now: Date())
+      activeTimers[index].startTime = newStart
+      activeTimers[index].pausedRemaining = nil
+    } else {
+      let remaining = remainingSeconds(
+        startTime: timer.startTime, duration: timer.duration,
+        pausedRemaining: nil)
+      activeTimers[index].pausedRemaining = max(0, remaining)
+    }
+
+    refreshTickTimer()
+    saveTimers()
+    updateStatusIcon()
+    updateMenu()
   }
 
   @objc func showHistory() {
@@ -683,26 +732,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSMenuItem(title: "进行中的计时器", action: nil, keyEquivalent: ""))
       
       for (index, timerInfo) in activeTimers.enumerated() {
-        let remainingTime = timerInfo.startTime.addingTimeInterval(
-          timerInfo.duration
-        ).timeIntervalSince(Date())
-        let formattedTime = finishedTimerIds.contains(timerInfo.id)
-          ? "已结束"
-          : TimerTextFormatter.duration(remainingTime)
+        let isFinished = finishedTimerIds.contains(timerInfo.id)
+        let isPaused = timerInfo.pausedRemaining != nil
+        let remaining = remainingSeconds(
+          startTime: timerInfo.startTime, duration: timerInfo.duration,
+          pausedRemaining: timerInfo.pausedRemaining)
+        let formattedTime: String
+        if isFinished {
+          formattedTime = "已结束"
+        } else if isPaused {
+          formattedTime = "\(TimerTextFormatter.duration(remaining)) · 暂停"
+        } else {
+          formattedTime = TimerTextFormatter.duration(remaining)
+        }
 
         let displayName = timerInfo.name ?? "计时器 \(index + 1)"
+        let timerId = timerInfo.id
         let menuItem = NSMenuItem()
 
         let customView = HoverView(
-          normalText: "\(displayName): \(formattedTime)",
-          hoverText: "删除",
-          frame: NSRect(x: 0, y: 0, width: 250, height: 22),
-          representedObject: timerInfo.id,
-          target: self,
-          action: #selector(cancelTimer(sender:))
+          text: "\(displayName): \(formattedTime)",
+          isPaused: isPaused,
+          frame: NSRect(x: 0, y: 0, width: 270, height: 24),
+          onTogglePause: { [weak self] in
+            self?.togglePause(id: timerId)
+          },
+          onDelete: { [weak self] in
+            self?.deleteTimer(id: timerId)
+          }
         )
         menuItem.view = customView
-        
+
         menu.addItem(menuItem)
       }
       

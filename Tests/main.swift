@@ -51,16 +51,49 @@ expect(
 // MARK: - 历史记录
 
 print("HistoryStore")
+let now = Date()
 let sample = [
-  TimerRecord(id: UUID(), name: "泡面", duration: 300, finishedAt: Date()),
-  TimerRecord(id: UUID(), name: "Meeting", duration: 3600, finishedAt: Date()),
+  TimerRecord(
+    name: "泡面", duration: 300, createdAt: now, status: .active),
+  TimerRecord(
+    name: "Meeting", duration: 3600, createdAt: now,
+    finishedAt: now.addingTimeInterval(3600), status: .finished),
 ]
 let encoded = HistoryStore.encode(sample)
 expect(encoded != nil, "可以编码")
 let decodedRecords = encoded.flatMap(HistoryStore.decode)
 expect(decodedRecords?.count == 2, "可以解码回两条")
 expect(decodedRecords?.first?.name == "泡面", "字段内容完整")
+expect(decodedRecords?.first?.status == .active, "进行中状态保留")
+expect(decodedRecords?.last?.finishedAt != nil, "结束时间保留")
 expect(HistoryStore.decode(Data("不是 JSON".utf8)) == nil, "脏数据返回 nil")
+
+// 旧存档只有 finishedAt，没有 createdAt / status
+let legacyRecordJSON = """
+[{"id":"\(UUID().uuidString)","name":"旧记录","duration":60,"finishedAt":800000000}]
+""".data(using: .utf8)!
+let legacyRecord = HistoryStore.decode(legacyRecordJSON)
+expect(legacyRecord?.first?.status == .finished, "旧记录默认视为已完成")
+expect(legacyRecord?.first?.createdAt != nil, "旧记录有兜底创建时间")
+
+// MARK: - 暂停与恢复
+
+print("TimerMath")
+let running = TimerMath.remaining(
+  startTime: now.addingTimeInterval(-60), duration: 120,
+  pausedRemaining: nil, now: now)
+expect(abs(running - 60) < 0.01, "运行中剩余 60 秒")
+
+let paused = TimerMath.remaining(
+  startTime: now.addingTimeInterval(-60), duration: 120,
+  pausedRemaining: 30, now: now.addingTimeInterval(100))
+expect(abs(paused - 30) < 0.01, "暂停时返回冻结值，不随时间递减")
+
+let resumedStart = TimerMath.resumedStartTime(
+  duration: 120, remaining: 30, now: now)
+let afterResume = TimerMath.remaining(
+  startTime: resumedStart, duration: 120, pausedRemaining: nil, now: now)
+expect(abs(afterResume - 30) < 0.01, "恢复后剩余时间保持不变")
 
 // MARK: - 旧版存档兼容
 
