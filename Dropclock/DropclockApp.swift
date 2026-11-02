@@ -44,7 +44,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   internal var dragTimerPanel: DragTimerPanel?
   
   internal var endTime: Date?
-  private var menuUpdateTimer: Timer?
   private var isMenuOpen = false
   
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -61,9 +60,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     updateMenu()
     
     startStatusIconUpdateTimer()
-    
-    startMenuUpdateTimer()
-    
+
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(menuWillOpen(_:)),
@@ -168,6 +165,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     guard let menu = notification.object as? NSMenu, menu == statusItem?.menu
     else { return }
     isMenuOpen = true
+    updateMenu()
     startMenuRefreshTimer()
   }
   
@@ -193,13 +191,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   private func stopMenuRefreshTimer() {
     menuRefreshTimer?.invalidate()
     menuRefreshTimer = nil
-  }
-  
-  private func startMenuUpdateTimer() {
-    menuUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) {
-      [weak self] _ in
-      self?.updateMenu()
-    }
   }
   
   internal func showNameInputField() {
@@ -493,8 +484,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
   
   @objc func cancelTimer(sender: NSMenuItem) {
-    guard let timerIndex = sender.representedObject as? Int,
-          timerIndex < activeTimers.count
+    // 按 UUID 定位，避免菜单每秒重建期间计时器列表变动导致删错行。
+    guard let timerId = sender.representedObject as? UUID,
+      let timerIndex = activeTimers.firstIndex(where: { $0.id == timerId })
     else {
       return
     }
@@ -535,7 +527,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     NSApplication.shared.terminate(nil)
   }
   
+  private var lastMenuSignature: String?
+
+  /// 菜单内容指纹：只有内容真的变了才重建，避免每秒重建带来的闪烁和开销。
+  private func menuSignature() -> String {
+    let items = activeTimers.map { timer -> String in
+      let remaining = timer.startTime.addingTimeInterval(timer.duration)
+        .timeIntervalSince(Date())
+      return "\(timer.id.uuidString)#\(Int(max(0, remaining)))#\(timer.name ?? "")"
+    }
+    return "\(activeTimers.count)|" + items.joined(separator: ",")
+  }
+
   private func updateMenu() {
+    let signature = menuSignature()
+    guard signature != lastMenuSignature else { return }
+    lastMenuSignature = signature
+
     let menu = NSMenu()
     
     if activeTimers.count > 0 {
@@ -550,13 +558,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         let displayName = timerInfo.name ?? "计时器 \(index + 1)"
         let menuItem = NSMenuItem()
-        menuItem.representedObject = index
-        
+
         let customView = HoverView(
           normalText: "\(displayName): \(formattedTime)",
           hoverText: "删除",
           frame: NSRect(x: 0, y: 0, width: 250, height: 22),
-          index: index,
+          representedObject: timerInfo.id,
           target: self,
           action: #selector(cancelTimer(sender:))
         )

@@ -93,13 +93,12 @@ class MenuManager: NSObject {
 
           let displayName = timerInfo.name ?? "计时器 \(index + 1)"
           let menuItem = NSMenuItem()
-          menuItem.representedObject = index
 
           let customView = HoverView(
             normalText: "\(displayName): \(formattedTime)",
             hoverText: "删除",
             frame: NSRect(x: 0, y: 0, width: 250, height: 22),
-            index: index,
+            representedObject: timerInfo.id,
             target: self,
             action: #selector(callCancelTimer(sender:))
           )

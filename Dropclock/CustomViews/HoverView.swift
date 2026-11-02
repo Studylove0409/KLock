@@ -6,15 +6,15 @@ class HoverView: NSView {
   private let hoverText: String
   private weak var target: AnyObject?
   private let action: Selector
-  private let index: Int
+  private let representedObject: Any?
 
   init(
-    normalText: String, hoverText: String, frame: NSRect, index: Int,
-    target: AnyObject, action: Selector
+    normalText: String, hoverText: String, frame: NSRect,
+    representedObject: Any?, target: AnyObject, action: Selector
   ) {
     self.normalText = normalText
     self.hoverText = hoverText
-    self.index = index
+    self.representedObject = representedObject
     self.target = target
     self.action = action
     super.init(frame: frame)
@@ -53,7 +53,7 @@ class HoverView: NSView {
   @objc private func viewClicked() {
     if let target = target {
       let tempMenuItem = NSMenuItem()
-      tempMenuItem.representedObject = index
+      tempMenuItem.representedObject = representedObject
       _ = target.perform(action, with: tempMenuItem)
 
       if let menu = enclosingMenuItem?.menu {
