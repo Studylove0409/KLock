@@ -108,8 +108,7 @@ class SoundManager {
     } catch {
       print("SoundManager: failed to load custom sound - \(error)")
     }
-    // If custom sound fails or is missing, fall back to bundled sounds
-    playPredefinedSoundFallback(loop: loop)
+    // 失败时返回 false，由调用方统一回退到内置音效，避免重复播放。
     return false
   }
 
