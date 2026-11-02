@@ -32,8 +32,21 @@ final class HistoryWindowController: NSWindowController {
 
   func showWindow() {
     reload()
-    window?.center()
-    window?.makeKeyAndOrderFront(nil)
+    // 不用 window.center()：它会按 AppKit 认定的主屏居中，
+    // 多显示器下常常弹到另一块屏上。统一跟随鼠标所在屏幕。
+    if let window = window {
+      let screen = NSScreen.screens.first {
+        $0.frame.contains(NSEvent.mouseLocation)
+      } ?? NSScreen.main
+      if let visible = screen?.visibleFrame {
+        let size = window.frame.size
+        window.setFrameOrigin(
+          NSPoint(
+            x: visible.midX - size.width / 2,
+            y: visible.midY - size.height / 2))
+      }
+      window.makeKeyAndOrderFront(nil)
+    }
     NSApp.activate(ignoringOtherApps: true)
   }
 
@@ -126,8 +139,23 @@ final class HistoryWindowController: NSWindowController {
     let records = HistoryStore.shared.records
     emptyLabel.isHidden = !records.isEmpty
 
-    for (index, record) in records.enumerated() {
-      if index > 0 {
+    var currentDay: String?
+    var indexInGroup = 0
+
+    for record in records {
+      let moment = record.finishedAt ?? record.createdAt
+      let day = Self.dayText(moment)
+
+      if day != currentDay {
+        currentDay = day
+        indexInGroup = 0
+        let header = makeSectionHeader(day)
+        rowsStack.addArrangedSubview(header)
+        NSLayoutConstraint.activate([
+          header.widthAnchor.constraint(equalTo: rowsStack.widthAnchor),
+          header.heightAnchor.constraint(equalToConstant: 30),
+        ])
+      } else if indexInGroup > 0 {
         let line = makeSeparator()
         rowsStack.addArrangedSubview(line)
         NSLayoutConstraint.activate([
@@ -143,7 +171,20 @@ final class HistoryWindowController: NSWindowController {
         row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor),
         row.heightAnchor.constraint(equalToConstant: 44),
       ])
+      indexInGroup += 1
     }
+  }
+
+  /// 日期分组标题（今天 / 昨天 / 11月1日）
+  private func makeSectionHeader(_ text: String) -> NSView {
+    let label = NSTextField(labelWithString: text)
+    label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    label.textColor = .secondaryLabelColor
+    let row = NSStackView(views: [label])
+    row.orientation = .horizontal
+    row.alignment = .centerY
+    row.edgeInsets = NSEdgeInsets(top: 10, left: 20, bottom: 2, right: 20)
+    return row
   }
 
   private func makeRow(for record: TimerRecord) -> NSView {
@@ -174,6 +215,8 @@ final class HistoryWindowController: NSWindowController {
     row.orientation = .horizontal
     row.alignment = .centerY
     row.spacing = 10
+    // .gravityAreas（默认）会把多余空间留在尾部，右侧时间就贴不到右边
+    row.distribution = .fill
     row.edgeInsets = NSEdgeInsets(top: 11, left: 20, bottom: 11, right: 20)
     return row
   }
@@ -208,15 +251,55 @@ final class HistoryWindowController: NSWindowController {
       ? "\(hours) 小时" : "\(hours) 小时 \(restMinutes) 分"
   }
 
-  private static func dateText(_ date: Date) -> String {
+  // 复用一个 formatter：每次新建在 200 条记录时要建 200 个
+  private static let timeFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "zh_CN")
+    formatter.dateFormat = "HH:mm"
+    return formatter
+  }()
+
+  private static let stampFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "zh_CN")
     formatter.dateFormat = "MM-dd HH:mm"
-    return formatter.string(from: date)
+    return formatter
+  }()
+
+  private static let dayFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "zh_CN")
+    formatter.dateFormat = "M月d日"
+    return formatter
+  }()
+
+  private static func dayText(_ date: Date) -> String {
+    let calendar = Calendar.current
+    if calendar.isDateInToday(date) { return "今天" }
+    if calendar.isDateInYesterday(date) { return "昨天" }
+    return dayFormatter.string(from: date)
+  }
+
+  private static func dateText(_ date: Date) -> String {
+    Calendar.current.isDateInToday(date)
+      ? timeFormatter.string(from: date)
+      : stampFormatter.string(from: date)
   }
 
   @objc private func clearHistory() {
-    HistoryStore.shared.clear()
-    reload()
+    let count = HistoryStore.shared.records.count
+    guard count > 0, let window = window else { return }
+
+    let alert = NSAlert()
+    alert.messageText = "清空全部历史记录？"
+    alert.informativeText = "共 \(count) 条，清空后无法恢复。"
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "清空")
+    alert.addButton(withTitle: "取消")
+    alert.beginSheetModal(for: window) { [weak self] response in
+      guard response == .alertFirstButtonReturn else { return }
+      HistoryStore.shared.clear()
+      self?.reload()
+    }
   }
 }

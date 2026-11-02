@@ -22,7 +22,12 @@ class DragTimerPanel {
   func show() {
     cleanup()
 
-    guard let screen = NSScreen.main else { return }
+    // 用鼠标所在的那块屏幕，避免多屏时先在主屏闪一下再跳过去
+    guard
+      let screen = NSScreen.screens.first(where: {
+        $0.frame.contains(NSEvent.mouseLocation)
+      }) ?? NSScreen.main
+    else { return }
     let windowSize = NSSize(width: Self.minWidth, height: Self.panelHeight)
     let windowOrigin = NSPoint(
       x: screen.frame.midX - windowSize.width / 2,
@@ -126,10 +131,23 @@ class DragTimerPanel {
 
       let windowWidth = panel.frame.width
       let windowHeight = panel.frame.height
-      let newOrigin = NSPoint(
-        x: point.x - windowWidth / 2,
-        y: point.y - windowHeight / 2)
-      panel.setFrameOrigin(newOrigin)
+
+      // 贴着屏幕边缘拖时不要把面板推出可视区
+      let screen = NSScreen.screens.first { $0.frame.contains(point) }
+        ?? NSScreen.main
+      let visible = screen?.visibleFrame ?? .zero
+      var originX = point.x - windowWidth / 2
+      var originY = point.y - windowHeight / 2
+      if visible.width > 0, visible.height > 0 {
+        let margin: CGFloat = 6
+        originX = min(
+          max(originX, visible.minX + margin),
+          visible.maxX - windowWidth - margin)
+        originY = min(
+          max(originY, visible.minY + margin),
+          visible.maxY - windowHeight - margin)
+      }
+      panel.setFrameOrigin(NSPoint(x: originX, y: originY))
     }
   }
 

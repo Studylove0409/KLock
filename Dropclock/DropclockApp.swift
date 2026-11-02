@@ -360,6 +360,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     else {
       if runningTimerCount > 0 {
+        let badgeText = runningTimerCount > 9 ? "+" : "\(runningTimerCount)"
+        // 内容没变就直接退出：这段每秒都会跑，重建图标要 lockFocus
+        if lastStatusImageKey == "badge|\(badgeText)" { return }
+
         let symbolName: String
         if #available(macOS 15.3, *) {
           symbolName = "arrow.trianglehead.counterclockwise.rotate.90"
@@ -375,7 +379,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           symbolImage.size = symbolSize
           symbolImage.isTemplate = true  // Ensure template image
           
-          let text = runningTimerCount > 9 ? "+" : "\(runningTimerCount)"
+          let text = badgeText
           let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 9, weight: .medium)
           ]
@@ -406,6 +410,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           setStatusTitle("\(activeTimers.count)")
         }
       } else {
+        if lastStatusImageKey == "clock" { return }
         clearStatusTitle()
         let symbolName: String
         if #available(macOS 15.3, *) {

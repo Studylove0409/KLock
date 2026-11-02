@@ -105,8 +105,21 @@ class NameInputPanel: NSObject {
       buttonStack.heightAnchor.constraint(equalToConstant: 30),
     ])
 
-    let panelOrigin = NSPoint(x: point.x - size.width / 2, y: point.y - 120)
-    panel.setFrameOrigin(panelOrigin)
+    // 靠近屏幕边缘时把面板拉回可视区，否则输入框会跑到屏幕外
+    let screen = NSScreen.screens.first { $0.frame.contains(point) }
+      ?? NSScreen.main
+    let visible = screen?.visibleFrame ?? .zero
+    var origin = NSPoint(x: point.x - size.width / 2, y: point.y - 120)
+    if visible.width > 0, visible.height > 0 {
+      let margin: CGFloat = 8
+      origin.x = min(
+        max(origin.x, visible.minX + margin),
+        visible.maxX - size.width - margin)
+      origin.y = min(
+        max(origin.y, visible.minY + margin),
+        visible.maxY - size.height - margin)
+    }
+    panel.setFrameOrigin(origin)
 
     panel.alphaValue = 0
     panel.orderFront(nil)
