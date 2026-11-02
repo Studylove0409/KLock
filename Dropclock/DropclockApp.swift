@@ -198,6 +198,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     nameInputPanel?.show(at: NSEvent.mouseLocation)
   }
   
+  /// 菜单栏里分配给计时器名称的宽度预算（pt）。
+  private static let menuBarNameWidth: CGFloat = 120
+
+  private func textWidth(_ text: String) -> CGFloat {
+    let attributes: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 13, weight: .medium)
+    ]
+    return NSAttributedString(string: text, attributes: attributes).size().width
+  }
+
+  /// 按渲染宽度截断：原来按字符数算，中文一个字约占两个英文宽度，会撑爆菜单栏。
+  private func truncatedName(_ name: String, maxWidth: CGFloat) -> String {
+    guard textWidth(name) > maxWidth else { return name }
+    let ellipsis = "…"
+    var kept = name
+    while !kept.isEmpty {
+      kept.removeLast()
+      let candidate = kept + ellipsis
+      if textWidth(candidate) <= maxWidth { return candidate }
+    }
+    return ellipsis
+  }
+
   internal func updateStatusIcon() {
     if UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar") && activeTimers.count > 0 {
       
@@ -214,11 +237,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         if remainingTime > 0 {
           let formattedTime = formatTimeInterval(remainingTime)
-          let displayName = timer.name ?? "计时器"
-          let truncatedName = displayName.count > 15
-          ? String(displayName.prefix(12)) + "…"
-          : displayName
-          let displayText = "\(truncatedName): \(formattedTime)"
+          let displayName = truncatedName(
+            timer.name ?? "计时器", maxWidth: Self.menuBarNameWidth)
+          let displayText = "\(displayName): \(formattedTime)"
           
           statusItem?.button?.image = nil
           statusItem?.button?.title = displayText
