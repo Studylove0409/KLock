@@ -33,6 +33,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   
   private var statusIconUpdateTimer: Timer?
   private var timer: Timer?
+  /// 循环闹铃时已结束、但需要留在列表里等用户手动停止的计时器。
+  private var finishedTimerIds: Set<UUID> = []
   private var activeTimers:
   [(
     id: UUID, name: String?, startTime: Date, duration: TimeInterval,
@@ -110,45 +112,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       
       for savedTimer in savedTimers {
         let timerId = UUID(uuidString: savedTimer.id) ?? UUID()
-        let now = Date()
-        
         let endTime = savedTimer.startTime.addingTimeInterval(
           savedTimer.duration)
-        let remainingTime = endTime.timeIntervalSince(now)
-        
-        if remainingTime > 0 {
-          let timerObj = Timer.scheduledTimer(
-            withTimeInterval: remainingTime, repeats: false
-          ) { [weak self] _ in
-            self?.timerFinished(id: timerId)
-          }
-          
-          activeTimers.append(
-            (
-              id: timerId,
-              name: savedTimer.name,
-              startTime: savedTimer.startTime,
-              duration: savedTimer.duration,
-              timer: timerObj,
-              reminderId: savedTimer.reminderId
-            ))
-        } else {
-          let timerObj = Timer.scheduledTimer(
-            withTimeInterval: 1.0, repeats: false
-          ) { [weak self] _ in
-            self?.timerFinished(id: timerId)
-          }
-          
-          activeTimers.append(
-            (
-              id: timerId,
-              name: savedTimer.name,
-              startTime: savedTimer.startTime,
-              duration: savedTimer.duration,
-              timer: timerObj,
-              reminderId: savedTimer.reminderId
-            ))
-          
+        let remainingTime = endTime.timeIntervalSinceNow
+
+        let timerObj = makeTimerCheck(id: timerId, endAt: endTime)
+
+        activeTimers.append(
+          (
+            id: timerId,
+            name: savedTimer.name,
+            startTime: savedTimer.startTime,
+            duration: savedTimer.duration,
+            timer: timerObj,
+            reminderId: savedTimer.reminderId
+          ))
+
+        if remainingTime <= 0 {
           print(
             "Timer \(timerId) expired while app was not running. Triggering notification..."
           )
@@ -200,35 +180,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   
   /// 菜单栏里分配给计时器名称的宽度预算（pt）。
   private static let menuBarNameWidth: CGFloat = 120
+  private static let menuBarNameFont = NSFont.systemFont(
+    ofSize: 13, weight: .medium)
 
-  private func textWidth(_ text: String) -> CGFloat {
-    let attributes: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 13, weight: .medium)
-    ]
-    return NSAttributedString(string: text, attributes: attributes).size().width
-  }
+  private var truncatedNameCache: (name: String, maxWidth: CGFloat, result: String)?
 
   /// 按渲染宽度截断：原来按字符数算，中文一个字约占两个英文宽度，会撑爆菜单栏。
+  /// 状态栏每秒刷新，这里缓存上次结果，避免重复做字符串测量。
   private func truncatedName(_ name: String, maxWidth: CGFloat) -> String {
-    guard textWidth(name) > maxWidth else { return name }
-    let ellipsis = "…"
-    var kept = name
-    while !kept.isEmpty {
-      kept.removeLast()
-      let candidate = kept + ellipsis
-      if textWidth(candidate) <= maxWidth { return candidate }
+    if let cached = truncatedNameCache, cached.name == name,
+      cached.maxWidth == maxWidth
+    {
+      return cached.result
     }
-    return ellipsis
+
+    let result = TimerTextFormatter.truncated(
+      name, maxWidth: maxWidth, font: Self.menuBarNameFont)
+    truncatedNameCache = (name, maxWidth, result)
+    return result
+  }
+
+  /// 正在计时的数量（不含循环闹铃结束后残留的条目）。
+  private var runningTimerCount: Int {
+    activeTimers.reduce(0) { count, timer in
+      count + (finishedTimerIds.contains(timer.id) ? 0 : 1)
+    }
   }
 
   internal func updateStatusIcon() {
-    if UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar") && activeTimers.count > 0 {
-      
-      let nextTimer = activeTimers.min { timer1, timer2 in
-        let endTime1 = timer1.startTime.addingTimeInterval(timer1.duration)
-        let endTime2 = timer2.startTime.addingTimeInterval(timer2.duration)
-        return endTime1 < endTime2
-      }
+    if UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar")
+      && runningTimerCount > 0
+    {
+
+      let nextTimer = activeTimers
+        .filter { !finishedTimerIds.contains($0.id) }
+        .min { timer1, timer2 in
+          let endTime1 = timer1.startTime.addingTimeInterval(timer1.duration)
+          let endTime2 = timer2.startTime.addingTimeInterval(timer2.duration)
+          return endTime1 < endTime2
+        }
       
       if let timer = nextTimer {
         let now = Date()
@@ -236,7 +226,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let remainingTime = endTime.timeIntervalSince(now)
         
         if remainingTime > 0 {
-          let formattedTime = formatTimeInterval(remainingTime)
+          let formattedTime = TimerTextFormatter.duration(remainingTime)
           let displayName = truncatedName(
             timer.name ?? "计时器", maxWidth: Self.menuBarNameWidth)
           let displayText = "\(displayName): \(formattedTime)"
@@ -280,7 +270,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       }
     }
     else {
-      if activeTimers.count > 0 {
+      if runningTimerCount > 0 {
         let symbolName: String
         if #available(macOS 15.3, *) {
           symbolName = "arrow.trianglehead.counterclockwise.rotate.90"
@@ -296,7 +286,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           symbolImage.size = symbolSize
           symbolImage.isTemplate = true  // Ensure template image
           
-          let text = activeTimers.count > 9 ? "+" : "\(activeTimers.count)"
+          let text = runningTimerCount > 9 ? "+" : "\(runningTimerCount)"
           let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 9, weight: .medium)
           ]
@@ -379,18 +369,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
   
+  /// 每秒检查是否到点。
+  /// 原来用一个整段时长的单次 Timer，系统睡眠或主线程卡顿后回调会迟触发，
+  /// 而界面时间是由 endTime 算的，两者会不一致，所以改成轮询判断。
+  private func makeTimerCheck(id: UUID, endAt: Date) -> Timer {
+    let interval = min(1.0, max(0.2, endAt.timeIntervalSinceNow))
+    return Timer.scheduledTimer(withTimeInterval: interval, repeats: true) {
+      [weak self] _ in
+      guard let self = self, Date() >= endAt else { return }
+      self.timerFinished(id: id)
+    }
+  }
+
   internal func startOneTimeTimer(name: String?) {
     if let timerData = pendingTimerData
         ?? (dragTimeInterval > 0 ? (Date(), dragTimeInterval) : nil)
     {
       let timerId = UUID()
       let reminderId: String? = nil
-      
-      let timerObj = Timer.scheduledTimer(
-        withTimeInterval: timerData.duration, repeats: false
-      ) { [weak self] _ in
-        self?.timerFinished(id: timerId)
-      }
+
+      let endAt = timerData.startTime.addingTimeInterval(timerData.duration)
+      let timerObj = makeTimerCheck(id: timerId, endAt: endAt)
       
       if UserDefaults.standard.bool(forKey: "allowReminders") {
         if !UserDefaults.standard.bool(forKey: "ignoreShortTimers")
@@ -441,7 +440,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   /// 提醒事项创建失败时给出可见反馈，避免只写日志导致用户完全无感。
-  private func showReminderError(_ error: Error) {
+  private func showReminderError(_ error: Error, action: String = "创建") {
     let message: String
     if let reminderError = error as? RemindersError {
       switch reminderError {
@@ -464,7 +463,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     DispatchQueue.main.async {
       NSApp.activate(ignoringOtherApps: true)
       let alert = NSAlert()
-      alert.messageText = "无法创建提醒事项"
+      alert.messageText = "无法\(action)提醒事项"
       alert.informativeText = message
       alert.alertStyle = .warning
       alert.addButton(withTitle: "好")
@@ -484,6 +483,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     if let index = activeTimers.firstIndex(where: { $0.id == id }) {
       let timer = activeTimers[index]
       let timerName = timer.name
+      timer.timer.invalidate()
       NotificationManager.shared.dispatchNotification(timerName: timerName)
       let defaults = UserDefaults.standard
       let shouldLoopAlarm = defaults.bool(forKey: "playAlarmSound")
@@ -491,8 +491,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       SoundManager.shared.playSelectedAlarmIfEnabled(loop: shouldLoopAlarm)
 
       if shouldLoopAlarm {
-        // Keep the finished timer in the list so the user can stop the alarm by deleting it. 
-        // Dunno how I would do it otherwise. TODO: Improve!
+        // 循环闹铃时保留在列表里并标记为已结束，用户点「删除」即可停止。
+        finishedTimerIds.insert(id)
       } else {
         activeTimers.remove(at: index)
       }
@@ -521,12 +521,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
               withIdentifier: reminderId)
           } catch {
             print("Failed to delete reminder: \(error.localizedDescription)")
+            self.showReminderError(error, action: "删除")
           }
         }
       }
     }
     
     timerToRemove.timer.invalidate()
+    finishedTimerIds.remove(timerId)
     activeTimers.remove(at: timerIndex)
     SoundManager.shared.stopActiveSound()
     saveTimers()
@@ -554,7 +556,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let items = activeTimers.map { timer -> String in
       let remaining = timer.startTime.addingTimeInterval(timer.duration)
         .timeIntervalSince(Date())
-      return "\(timer.id.uuidString)#\(Int(max(0, remaining)))#\(timer.name ?? "")"
+      let state = finishedTimerIds.contains(timer.id) ? "F" : "R"
+      return
+        "\(timer.id.uuidString)#\(Int(max(0, remaining)))#\(state)#\(timer.name ?? "")"
     }
     return "\(activeTimers.count)|" + items.joined(separator: ",")
   }
@@ -574,8 +578,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let remainingTime = timerInfo.startTime.addingTimeInterval(
           timerInfo.duration
         ).timeIntervalSince(Date())
-        let formattedTime = formatTimeInterval(remainingTime)
-        
+        let formattedTime = finishedTimerIds.contains(timerInfo.id)
+          ? "已结束"
+          : TimerTextFormatter.duration(remainingTime)
+
         let displayName = timerInfo.name ?? "计时器 \(index + 1)"
         let menuItem = NSMenuItem()
 
@@ -604,19 +610,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         title: "退出 Dropclock", action: #selector(quit), keyEquivalent: "q"))
     
     statusItem?.menu = menu
-  }
-  
-  private func formatTimeInterval(_ timeInterval: TimeInterval) -> String {
-    let totalSeconds = Int(max(0, timeInterval))
-    let hours = totalSeconds / 3600
-    let minutes = (totalSeconds % 3600) / 60
-    let seconds = totalSeconds % 60
-    
-    if hours > 0 {
-      return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-      return String(format: "%02d:%02d", minutes, seconds)
-    }
   }
   
 }
