@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Xcode - 用户私有数据（每人不同，不应入库）
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+project.xcworkspace/xcuserdata/
+project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# Xcode - 构建产物
+build/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.moved-aside
+timeline.xctimeline
+playground.xcworkspace
+
+# Swift Package Manager
+.build/
+Packages/
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+
+# CocoaPods / Carthage（当前未使用，预留）
+Pods/
+Carthage/Build/
+
+# 签名与密钥
+*.cer
+*.p12
+*.mobileprovision
+*.provisionprofile
+
+# 日志与临时文件
+*.log
+*.tmp
+*.swp
+*~
+
+# AI / 本地工具数据
+.workbuddy/
+.claude/
+.cursor/
