@@ -10,24 +10,16 @@ struct SettingsSection<Content: View>: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
+    VStack(alignment: .leading, spacing: 7) {
       Text(title)
         .font(.system(size: 11, weight: .semibold))
-        .foregroundColor(Color(.gray))
-        .textCase(.uppercase)
-        .padding([.top, .leading], 10)
+        .foregroundStyle(.secondary)
+        .padding(.leading, 3)
 
       VStack(spacing: 0) {
         content()
       }
-      .background(Color(NSColor.windowBackgroundColor))
-      .cornerRadius(8)
-      .overlay(
-        RoundedRectangle(cornerRadius: 8)
-          .strokeBorder(
-            Color(NSColor.controlColor.withSystemEffect(.disabled)),
-            lineWidth: 1, antialiased: true)
-      )
+      .glassCard()
     }
   }
 }

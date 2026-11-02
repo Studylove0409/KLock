@@ -69,6 +69,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     startStatusIconUpdateTimer()
 
+    // 开发辅助：设 DROPCLOCK_SHOW_PREFS=1 启动时直接打开偏好设置，方便截图验收
+    if ProcessInfo.processInfo.environment["DROPCLOCK_SHOW_PREFS"] == "1" {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        PreferencesWindowController.shared.showWindow()
+      }
+    }
+
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(menuWillOpen(_:)),

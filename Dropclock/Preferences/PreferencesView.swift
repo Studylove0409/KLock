@@ -32,7 +32,6 @@ enum PreferenceTab {
 struct PreferencesView: View {
   @StateObject private var viewModel = PreferencesViewModel()
   @State private var selectedTab: PreferenceTab = .general
-  @State private var hoverStates: [PreferenceTab: Bool] = [:]
   @State private var isShowingSoundImporter: Bool = false
 
   private var notificationStatusText: String {
@@ -43,72 +42,33 @@ struct PreferencesView: View {
     }
   }
 
-  var body: some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 0) {
-        ForEach(
-          [
-            (tab: PreferenceTab.general, icon: "gearshape", label: "通用"),
-            (
-              tab: PreferenceTab.reminders, icon: "bell.fill",
-              label: "提醒"
-            ),
-            (tab: PreferenceTab.timers, icon: "timer", label: "计时器"),
-          ], id: \.tab
-        ) { tabInfo in
-          Button {
-            selectedTab = tabInfo.tab
-          } label: {
-            ZStack {
-              Color.clear
-                .contentShape(Rectangle())
-                .overlay(
-                  Group {
-                    if hoverStates[tabInfo.tab] ?? false {
-                      Color.gray.opacity(0.1)
-                    } else if selectedTab == tabInfo.tab {
-                      Color.blue.opacity(0.2)
-                    } else {
-                      Color.clear
-                    }
-                  }
-                )
+  private static let tabs: [(
+    tab: PreferenceTab, icon: String, label: String, subtitle: String
+  )] = [
+    (.general, "gearshape", "通用", "启动、菜单栏显示与外观"),
+    (.reminders, "bell.badge", "提醒事项", "与系统「提醒事项」联动"),
+    (.timers, "timer", "计时器", "命名、闹铃与拖拽步进"),
+  ]
 
-              VStack(spacing: 4) {
-                Image(systemName: tabInfo.icon)
-                  .font(.system(size: 16))
-                Text(tabInfo.label)
-                  .font(.system(size: 10))
-              }
-              .padding(.vertical, 8)
-            }
-            .frame(height: 50)
-            .frame(minWidth: 60)
-            .foregroundColor(selectedTab == tabInfo.tab ? .blue : .gray)
-          }
-          .buttonStyle(BorderlessButtonStyle())
-          .cornerRadius(8)
-          .onHover { hover in
-            hoverStates[tabInfo.tab] = hover
-          }
-        }
-      }
-      .padding(.horizontal)
-      .padding(.top)
-      ScrollView {
-        VStack {
-          switch selectedTab {
-          case .general:
-            generalSettingsView
-          case .reminders:
-            reminderSettingsView
-          case .timers:
-            timerSettingsView
-          }
-        }
-        .padding()
-      }
+  private var currentTab: (
+    tab: PreferenceTab, icon: String, label: String, subtitle: String
+  ) {
+    Self.tabs.first { $0.tab == selectedTab } ?? Self.tabs[0]
+  }
+
+  var body: some View {
+    HStack(spacing: 0) {
+      sidebar
+
+      // 1pt 分隔线，跟随明暗模式
+      Rectangle()
+        .fill(Color.primary.opacity(0.07))
+        .frame(width: 1)
+
+      contentPane
     }
+    .frame(minWidth: 700, minHeight: 500)
+    .background(GlassBackground(material: .sidebar).ignoresSafeArea())
     .onAppear {
       viewModel.loadPreferences()
     }
@@ -125,7 +85,9 @@ struct PreferencesView: View {
         print("File import failed: \(error)")
       }
     }
-    .onChangeCompat(viewModel.allowReminders, publisher: viewModel.$allowReminders) { newValue in
+    .onChangeCompat(
+      viewModel.allowReminders, publisher: viewModel.$allowReminders
+    ) { newValue in
       if newValue {
         Task {
           await viewModel.ensureReminderAccess()
@@ -134,11 +96,89 @@ struct PreferencesView: View {
     }
   }
 
+  // MARK: - 侧栏
+
+  private var sidebar: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 7) {
+        Image(systemName: "timer")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(.secondary)
+        Text("Dropclock")
+          .font(.system(size: 13, weight: .semibold))
+      }
+      .padding(.horizontal, 9)
+      .padding(.top, 38)
+      .padding(.bottom, 14)
+
+      ForEach(Self.tabs, id: \.tab) { item in
+        SettingsTabButton(
+          icon: item.icon,
+          label: item.label,
+          isSelected: selectedTab == item.tab
+        ) {
+          selectedTab = item.tab
+        }
+      }
+
+      Spacer(minLength: 0)
+
+      Text("1.9")
+        .font(.system(size: 10))
+        .foregroundStyle(.tertiary)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 12)
+    }
+    .padding(.horizontal, 10)
+    .frame(width: 196)
+  }
+
+  // MARK: - 内容区
+
+  private var contentPane: some View {
+    ScrollViewReader { proxy in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+          // 顶部锚点：窗口显示时强制回到这里，
+          // 否则 AppKit 的焦点/状态恢复会把内容滚下去，页头被卷出视野
+          Color.clear.frame(height: 0).id("contentTop")
+
+          VStack(alignment: .leading, spacing: 3) {
+          Text(currentTab.label)
+            .font(.system(size: 17, weight: .semibold))
+          Text(currentTab.subtitle)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+        }
+        .padding(.bottom, 2)
+
+          switch selectedTab {
+          case .general:
+            generalSettingsView
+          case .reminders:
+            reminderSettingsView
+          case .timers:
+            timerSettingsView
+          }
+        }
+        .padding(.horizontal, 24)
+        // 和侧栏标题（top 38）对齐，视觉上一条基线
+        .padding(.top, 36)
+        .padding(.bottom, 28)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .onAppear { proxy.scrollTo("contentTop", anchor: .top) }
+      .onChange(of: selectedTab) { _ in
+        proxy.scrollTo("contentTop", anchor: .top)
+      }
+    }
+  }
+
   var generalSettingsView: some View {
     VStack(spacing: 20) {
-      SettingsSection(title: "通用") {
+      SettingsSection(title: "启动与菜单栏") {
         SettingsRow(
-          title: "登录时启动",
+          title: "登录时启动", showsTopDivider: false,
           helpText: "登录 Mac 时自动启动 Dropclock。"
         ) {
           Toggle("", isOn: $viewModel.startAtLogin)
@@ -187,7 +227,7 @@ struct PreferencesView: View {
         }
         if viewModel.useCustomMenuBarIcon {
           SettingsRow(
-            title: "自定义菜单栏文字",
+            title: "菜单栏文字",
             helpText: "输入要显示在菜单栏上的文字。"
           ) {
             TextField("输入文字", text: $viewModel.customMenuBarWord)
@@ -245,7 +285,7 @@ struct PreferencesView: View {
 
       SettingsSection(title: "显示") {
         SettingsRow(
-          title: "仅以分钟显示时间",
+          title: "仅以分钟显示时间", showsTopDivider: false,
           helpText:
             "开启后时间只以分钟显示，不再转换为小时和分钟。"
         ) {
@@ -306,7 +346,7 @@ struct PreferencesView: View {
     VStack(spacing: 20) {
       SettingsSection(title: "提醒事项") {
         SettingsRow(
-          title: "允许创建提醒事项",
+          title: "允许创建提醒事项", showsTopDivider: false,
           helpText:
             "开启后，每个新建的计时器都会在「提醒事项」中创建一条提醒。受提醒事项机制限制，时间会向上取整到整分钟。"
         ) {
@@ -318,9 +358,6 @@ struct PreferencesView: View {
               viewModel.savePreferences()
             }
         }
-
-        Divider()
-
         SettingsRow(
           title: "提醒列表",
           helpText: "选择提醒要创建到哪个列表。"
@@ -337,9 +374,6 @@ struct PreferencesView: View {
             viewModel.savePreferences()
           }
         }
-
-        Divider()
-
         SettingsRow(
           title: "同步删除提醒",
           helpText:
@@ -354,9 +388,6 @@ struct PreferencesView: View {
               viewModel.savePreferences()
             }
         }
-
-        Divider()
-
         SettingsRow(
           title: "忽略短时计时器",
           helpText: "开启后，较短的计时器不会创建提醒。"
@@ -395,7 +426,7 @@ struct PreferencesView: View {
     VStack(spacing: 20) {
       SettingsSection(title: "计时器") {
         SettingsRow(
-          title: "自定义计时器名称",
+          title: "自定义计时器名称", showsTopDivider: false,
           helpText:
             "开启后，创建计时器时可以输入自定义名称。"
         ) {
@@ -407,9 +438,6 @@ struct PreferencesView: View {
               viewModel.savePreferences()
             }
         }
-
-        Divider()
-
         SettingsRow(
             title: "播放闹铃",
             helpText:
@@ -485,8 +513,6 @@ struct PreferencesView: View {
               }
             }
           }
-
-          Divider()
         }
 
         SettingsRow(
@@ -502,9 +528,6 @@ struct PreferencesView: View {
               viewModel.savePreferences()
             }
         }
-
-        Divider()
-
         SettingsRow(
           title: "启用秒模式",
           helpText:
@@ -521,5 +544,45 @@ struct PreferencesView: View {
       }
       .padding(.bottom, 20)
     }
+  }
+}
+
+
+/// 侧栏分页按钮：选中时是强调色的半透明胶囊，悬停有极淡的高光。
+private struct SettingsTabButton: View {
+  let icon: String
+  let label: String
+  let isSelected: Bool
+  let action: () -> Void
+
+  @Environment(\.colorScheme) private var scheme
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 8) {
+        Image(systemName: icon)
+          .font(.system(size: 12, weight: .medium))
+          .frame(width: 17)
+        Text(label)
+          .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
+          .lineLimit(1)
+        Spacer(minLength: 0)
+      }
+      .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+      .padding(.horizontal, 9)
+      .padding(.vertical, 7)
+      .background(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill(
+            isSelected
+              ? Glass.selectionFill(scheme)
+              : (isHovering ? Color.primary.opacity(0.05) : Color.clear)
+          )
+      )
+      .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .onHover { isHovering = $0 }
   }
 }
