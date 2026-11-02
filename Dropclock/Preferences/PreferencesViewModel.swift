@@ -1,3 +1,4 @@
+import Combine
 import EventKit
 import ServiceManagement
 import SwiftUI
@@ -66,6 +67,9 @@ class PreferencesViewModel: ObservableObject {
   @Published var loopAlarmUntilStopped: Bool = false
   @Published var useCustomAlarmSound: Bool = false
   @Published var customAlarmSoundName: String = ""
+
+  /// 文本输入的延迟保存任务
+  private var pendingTextSave: AnyCancellable?
 
   private struct Keys {
     static let allowReminders = "allowReminders"
@@ -168,47 +172,66 @@ class PreferencesViewModel: ObservableObject {
     }
   }
 
+  /// 只写真正变化的值：原来每次保存都会重写全部偏好键。
+  private func persist(_ value: Bool, forKey key: String) {
+    if let stored = UserDefaults.standard.object(forKey: key) as? Bool,
+      stored == value
+    { return }
+    UserDefaults.standard.set(value, forKey: key)
+  }
+
+  private func persist(_ value: String, forKey key: String) {
+    if UserDefaults.standard.string(forKey: key) == value { return }
+    UserDefaults.standard.set(value, forKey: key)
+  }
+
+  private func persist(_ value: Double, forKey key: String) {
+    if let stored = UserDefaults.standard.object(forKey: key) as? Double,
+      stored == value
+    { return }
+    UserDefaults.standard.set(value, forKey: key)
+  }
+
   func savePreferences() {
-    if allowReminders {
-      Task {
-        await ensureReminderAccess()
-      }
-    }
     if let selected = selectedList {
-      UserDefaults.standard.set(
+      persist(
         selected.calendarIdentifier,
-        forKey: RemindersManager.selectedReminderListKey
-      )
+        forKey: RemindersManager.selectedReminderListKey)
     }
-    UserDefaults.standard.set(allowReminders, forKey: Keys.allowReminders)
-    UserDefaults.standard.set(deleteReminders, forKey: Keys.deleteReminders)
-    UserDefaults.standard.set(allowCustomNames, forKey: Keys.allowCustomNames)
-    UserDefaults.standard.set(ignoreShortTimers, forKey: Keys.ignoreShortTimers)
-    UserDefaults.standard.set(allowSecondsMode, forKey: Keys.allowSecondsMode)
-    UserDefaults.standard.set(
-      allowFiveMinuteMode, forKey: Keys.allowFiveMinuteMode)
-    UserDefaults.standard.set(viewAsMinutes, forKey: Keys.viewAsMinutes)
-    UserDefaults.standard.set(showDragIndicator, forKey: Keys.showDragIndicator)
-    UserDefaults.standard.set(
-      changeRubberbandColor, forKey: Keys.changeRubberbandColor)
-    UserDefaults.standard.set(
+    persist(allowReminders, forKey: Keys.allowReminders)
+    persist(deleteReminders, forKey: Keys.deleteReminders)
+    persist(allowCustomNames, forKey: Keys.allowCustomNames)
+    persist(ignoreShortTimers, forKey: Keys.ignoreShortTimers)
+    persist(allowSecondsMode, forKey: Keys.allowSecondsMode)
+    persist(allowFiveMinuteMode, forKey: Keys.allowFiveMinuteMode)
+    persist(viewAsMinutes, forKey: Keys.viewAsMinutes)
+    persist(showDragIndicator, forKey: Keys.showDragIndicator)
+    persist(changeRubberbandColor, forKey: Keys.changeRubberbandColor)
+    persist(
       shortTimerThresholdMinutes, forKey: Keys.shortTimerThresholdMinutes)
-    UserDefaults.standard.set(useCustomMenuBarIcon, forKey: Keys.useCustomMenuBarIcon)
-    UserDefaults.standard.set(customMenuBarWord, forKey: Keys.customMenuBarWord)
-    UserDefaults.standard.set(useAlternativeMenuBarIcon, forKey: Keys.useAlternativeMenuBarIcon)
-    UserDefaults.standard.set(useCustomMenuBarSymbol, forKey: Keys.useCustomMenuBarSymbol)
-    UserDefaults.standard.set(customMenuBarSymbol, forKey: Keys.customMenuBarSymbol)
-    UserDefaults.standard.set(showNextTimerInMenuBar, forKey: Keys.showNextTimerInMenuBar)
-    UserDefaults.standard.set(playAlarmSound, forKey: Keys.playAlarmSound)
-    UserDefaults.standard.set(selectedAlarmSound, forKey: Keys.selectedAlarmSound)
-    UserDefaults.standard.set(
-      loopAlarmUntilStopped, forKey: Keys.loopAlarmUntilStopped)
-    UserDefaults.standard.set(
-      useCustomAlarmSound, forKey: Keys.useCustomAlarmSound)
-    UserDefaults.standard.set(
-      customAlarmSoundName, forKey: Keys.customAlarmSoundName)
+    persist(useCustomMenuBarIcon, forKey: Keys.useCustomMenuBarIcon)
+    persist(customMenuBarWord, forKey: Keys.customMenuBarWord)
+    persist(useAlternativeMenuBarIcon, forKey: Keys.useAlternativeMenuBarIcon)
+    persist(useCustomMenuBarSymbol, forKey: Keys.useCustomMenuBarSymbol)
+    persist(customMenuBarSymbol, forKey: Keys.customMenuBarSymbol)
+    persist(showNextTimerInMenuBar, forKey: Keys.showNextTimerInMenuBar)
+    persist(playAlarmSound, forKey: Keys.playAlarmSound)
+    persist(selectedAlarmSound, forKey: Keys.selectedAlarmSound)
+    persist(loopAlarmUntilStopped, forKey: Keys.loopAlarmUntilStopped)
+    persist(useCustomAlarmSound, forKey: Keys.useCustomAlarmSound)
+    persist(customAlarmSoundName, forKey: Keys.customAlarmSoundName)
     updateLoginItem()
     saveDragLineColor()
+  }
+
+  /// 文本类设置防抖保存，避免每敲一个字符就落盘一次。
+  func schedulePreferencesSave() {
+    pendingTextSave?.cancel()
+    pendingTextSave = Just(())
+      .delay(for: .milliseconds(300), scheduler: DispatchQueue.main)
+      .sink { [weak self] _ in
+        self?.savePreferences()
+      }
   }
 
   func ensureReminderAccess() async {
@@ -235,11 +258,14 @@ class PreferencesViewModel: ObservableObject {
 
   private func saveDragLineColor() {
     let nsColor = NSColor(dragLineColor)
-    if let colorData = try? NSKeyedArchiver.archivedData(
-      withRootObject: nsColor, requiringSecureCoding: false)
-    {
-      UserDefaults.standard.set(colorData, forKey: "dragLineColor")
+    guard
+      let colorData = try? NSKeyedArchiver.archivedData(
+        withRootObject: nsColor, requiringSecureCoding: false)
+    else { return }
+    if UserDefaults.standard.data(forKey: "dragLineColor") == colorData {
+      return
     }
+    UserDefaults.standard.set(colorData, forKey: "dragLineColor")
   }
 
   func fetchReminderLists() async {
@@ -288,6 +314,9 @@ class PreferencesViewModel: ObservableObject {
   }
 
   func updateLoginItem() {
+    // 只在目标状态与系统实际状态不一致时才调用，避免每次保存都注册一遍。
+    let currentlyEnabled = SMAppService.mainApp.status == .enabled
+    guard startAtLogin != currentlyEnabled else { return }
     do {
       if startAtLogin {
         try SMAppService.mainApp.register()
@@ -297,7 +326,8 @@ class PreferencesViewModel: ObservableObject {
     } catch {
       print(
         "Error \(startAtLogin ? "enabling" : "disabling") login item: \(error)")
-      startAtLogin.toggle()
+      // 回读系统真实状态，避免盲目翻转导致开关自己乱跳。
+      startAtLogin = SMAppService.mainApp.status == .enabled
     }
   }
 }

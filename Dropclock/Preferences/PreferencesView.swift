@@ -186,7 +186,7 @@ struct PreferencesView: View {
               .textFieldStyle(RoundedBorderTextFieldStyle())
               .frame(width: 100)
               .onChangeCompat(viewModel.customMenuBarWord, publisher: viewModel.$customMenuBarWord) { _ in
-                viewModel.savePreferences()
+                viewModel.schedulePreferencesSave()
               }
           }
         }
@@ -211,7 +211,7 @@ struct PreferencesView: View {
               .textFieldStyle(RoundedBorderTextFieldStyle())
               .frame(width: 100)
               .onChangeCompat(viewModel.customMenuBarSymbol, publisher: viewModel.$customMenuBarSymbol) { _ in
-                viewModel.savePreferences()
+                viewModel.schedulePreferencesSave()
               }
           }
         }
