@@ -884,8 +884,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     if activeTimers.count > 0 {
       menu.addItem(
-        NSMenuItem(title: "进行中的计时器", action: nil, keyEquivalent: ""))
-      
+        sectionHeaderItem("进行中的计时器", count: activeTimers.count))
+
       for timerInfo in activeTimers {
         let row = menuRowText(for: timerInfo.id)
         let timerId = timerInfo.id
@@ -913,20 +913,54 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       }
       
       menu.addItem(NSMenuItem.separator())
+    } else {
+      // 空状态给一句用法提示，否则第一次打开只有一个光秃秃的「历史记录」
+      menu.addItem(sectionHeaderItem("按住图标向下拖动即可新建计时器", count: 0))
+      menu.addItem(NSMenuItem.separator())
     }
     
     menu.addItem(
-      NSMenuItem(
-        title: "历史记录…", action: #selector(showHistory), keyEquivalent: "h"))
+      actionItem(
+        "历史记录…", symbol: "clock.arrow.circlepath",
+        action: #selector(showHistory), keyEquivalent: "h"))
     menu.addItem(
-      NSMenuItem(
-        title: "偏好设置…", action: #selector(preferences), keyEquivalent: ","
-      ))
+      actionItem(
+        "偏好设置…", symbol: "gearshape",
+        action: #selector(preferences), keyEquivalent: ","))
     menu.addItem(
-      NSMenuItem(
-        title: "退出 Dropclock", action: #selector(quit), keyEquivalent: "q"))
+      actionItem(
+        "退出 Dropclock", symbol: "power",
+        action: #selector(quit), keyEquivalent: "q"))
     
     statusItem?.menu = menu
+  }
+
+  /// 分组标题：比菜单项小一号、次级色、不可点，和系统菜单里的分区标题一致。
+  private func sectionHeaderItem(_ text: String, count: Int) -> NSMenuItem {
+    let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+    item.attributedTitle = NSAttributedString(
+      string: count > 1 ? "\(text) · \(count)" : text,
+      attributes: [
+        .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+        .foregroundColor: NSColor.secondaryLabelColor,
+      ])
+    item.isEnabled = false
+    return item
+  }
+
+  /// 底部固定项：左侧带一枚 SF Symbol，跟随菜单的前景色渲染。
+  private func actionItem(
+    _ title: String, symbol: String, action: Selector, keyEquivalent: String
+  ) -> NSMenuItem {
+    let item = NSMenuItem(
+      title: title, action: action, keyEquivalent: keyEquivalent)
+    if let base = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
+      let configured = base.withSymbolConfiguration(
+        NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
+      configured?.isTemplate = true
+      item.image = configured
+    }
+    return item
   }
   
 }

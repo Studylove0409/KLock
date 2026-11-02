@@ -4,6 +4,8 @@ import SwiftUI
 class PreferencesWindowController: NSWindowController {
   static let shared = PreferencesWindowController()
 
+  private var hasBeenPositioned = false
+
   private init() {
     let preferencesView = PreferencesView()
     let hostingController = NSHostingController(rootView: preferencesView)
@@ -38,7 +40,8 @@ class PreferencesWindowController: NSWindowController {
       let isOnScreen = NSScreen.screens.contains {
         $0.visibleFrame.intersects(window.frame)
       }
-      if !isOnScreen {
+      if !hasBeenPositioned || !isOnScreen {
+        hasBeenPositioned = true
         let screen = NSScreen.screens.first {
           $0.frame.contains(NSEvent.mouseLocation)
         } ?? NSScreen.main

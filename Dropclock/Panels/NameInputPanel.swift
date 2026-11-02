@@ -42,6 +42,17 @@ class NameInputPanel: NSObject {
     blurView.layer?.cornerCurve = .continuous
     blurView.layer?.masksToBounds = true
 
+    // 顶部到中段的高光，和其他面板保持同一种玻璃质感
+    let sheen = CAGradientLayer()
+    sheen.frame = CGRect(origin: .zero, size: size)
+    sheen.colors = [
+      NSColor.white.withAlphaComponent(0.10).cgColor,
+      NSColor.white.withAlphaComponent(0).cgColor,
+    ]
+    sheen.startPoint = CGPoint(x: 0.5, y: 1)
+    sheen.endPoint = CGPoint(x: 0.5, y: 0.45)
+    blurView.layer?.addSublayer(sheen)
+
     let titleLabel = NSTextField(labelWithString: "计时器名称")
     titleLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
     titleLabel.textColor = NSColor.white.withAlphaComponent(0.55)
@@ -49,21 +60,33 @@ class NameInputPanel: NSObject {
     titleLabel.isBordered = false
     titleLabel.drawsBackground = false
 
+    // 输入框外面套一层圆角容器：NSTextField 自己画不出连续圆角的玻璃底
+    let fieldContainer = NSView()
+    fieldContainer.wantsLayer = true
+    fieldContainer.layer?.backgroundColor =
+      NSColor.white.withAlphaComponent(0.10).cgColor
+    fieldContainer.layer?.cornerRadius = 9
+    fieldContainer.layer?.cornerCurve = .continuous
+    fieldContainer.layer?.borderWidth = 1
+    fieldContainer.layer?.borderColor =
+      NSColor.white.withAlphaComponent(0.14).cgColor
+    fieldContainer.translatesAutoresizingMaskIntoConstraints = false
+
     let textField = NSTextField()
     textField.placeholderString =
       "计时器 \(UserDefaults.standard.integer(forKey: "timerCount") + 1)"
-    textField.font = NSFont.systemFont(ofSize: 14)
+    textField.font = NSFont.systemFont(ofSize: 13.5)
     textField.isEditable = true
     textField.isSelectable = true
     textField.delegate = self
     textField.isBordered = false
-    textField.isBezeled = true
-    textField.bezelStyle = .roundedBezel
-    textField.drawsBackground = true
-    textField.backgroundColor = NSColor.white.withAlphaComponent(0.12)
+    textField.isBezeled = false
+    textField.drawsBackground = false
+    textField.backgroundColor = .clear
     textField.textColor = .white
     textField.focusRingType = .none
     textField.translatesAutoresizingMaskIntoConstraints = false
+    fieldContainer.addSubview(textField)
 
     let cancelButton = NSButton(
       title: "取消", target: self, action: #selector(cancelNameInput))
@@ -83,11 +106,11 @@ class NameInputPanel: NSObject {
     buttonStack.spacing = 10
     buttonStack.distribution = .fillEqually
 
-    let stack = NSStackView(views: [titleLabel, textField, buttonStack])
+    let stack = NSStackView(views: [titleLabel, fieldContainer, buttonStack])
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 10
-    stack.setCustomSpacing(16, after: textField)
+    stack.setCustomSpacing(16, after: fieldContainer)
     stack.translatesAutoresizingMaskIntoConstraints = false
 
     blurView.addSubview(stack)
@@ -98,8 +121,14 @@ class NameInputPanel: NSObject {
       stack.trailingAnchor.constraint(equalTo: blurView.trailingAnchor, constant: -18),
       stack.topAnchor.constraint(
         equalTo: blurView.topAnchor, constant: 20),
-      textField.heightAnchor.constraint(equalToConstant: 30),
-      textField.widthAnchor.constraint(equalTo: stack.widthAnchor),
+      fieldContainer.heightAnchor.constraint(equalToConstant: 34),
+      fieldContainer.widthAnchor.constraint(equalTo: stack.widthAnchor),
+      textField.leadingAnchor.constraint(
+        equalTo: fieldContainer.leadingAnchor, constant: 10),
+      textField.trailingAnchor.constraint(
+        equalTo: fieldContainer.trailingAnchor, constant: -10),
+      textField.centerYAnchor.constraint(
+        equalTo: fieldContainer.centerYAnchor),
       titleLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
       buttonStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
       buttonStack.heightAnchor.constraint(equalToConstant: 30),

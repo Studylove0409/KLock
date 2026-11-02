@@ -62,6 +62,17 @@ class DragTimerPanel {
     blurView.layer?.borderWidth = 1
     blurView.layer?.borderColor =
       NSColor.white.withAlphaComponent(0.14).cgColor
+
+    // 顶部到中段的高光，和其他面板保持同一种玻璃质感
+    let sheen = CAGradientLayer()
+    sheen.frame = CGRect(origin: .zero, size: windowSize)
+    sheen.colors = [
+      NSColor.white.withAlphaComponent(0.10).cgColor,
+      NSColor.white.withAlphaComponent(0).cgColor,
+    ]
+    sheen.startPoint = CGPoint(x: 0.5, y: 1)
+    sheen.endPoint = CGPoint(x: 0.5, y: 0.45)
+    blurView.layer?.addSublayer(sheen)
     blurView.autoresizingMask = [.width, .height]
     self.blurView = blurView
 
