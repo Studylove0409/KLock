@@ -29,10 +29,11 @@ final class HoverView: NSView {
     didSet { needsDisplay = true }
   }
 
-  private static let iconSize: CGFloat = 13
-  private static let iconBox: CGFloat = 22
+  private static let iconSize: CGFloat = 10
+  private static let iconWeight: NSFont.Weight = .regular
+  private static let iconBox: CGFloat = 16
   private static let rightInset: CGFloat = 8
-  private static let iconSpacing: CGFloat = 4
+  private static let iconSpacing: CGFloat = 6
 
   init(
     text: String,
@@ -96,9 +97,13 @@ final class HoverView: NSView {
   }
 
   private func updateLayerScale() {
-    let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+    let scale = currentScale
     pauseLayer.contentsScale = scale
     deleteLayer.contentsScale = scale
+  }
+
+  private var currentScale: CGFloat {
+    window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
   }
 
   override func viewDidChangeBackingProperties() {
@@ -123,32 +128,42 @@ final class HoverView: NSView {
     }
   }
 
-  /// 把 SF Symbol 画进固定尺寸的图里并着色，返回 CGImage 供图层使用。
+  /// 把 SF Symbol 按屏幕缩放画进固定尺寸的位图并着色，返回 CGImage 供图层使用。
+  /// 直接给图层设置 contentsScale，所以必须按像素尺寸渲染，否则 Retina 上会发虚。
   private func iconImage(_ name: String) -> CGImage? {
     let box = Self.iconBox
+    let scale = currentScale
+    let pixelSize = Int((box * scale).rounded())
+
     guard
-      let base = NSImage(
+      let context = CGContext(
+        data: nil, width: pixelSize, height: pixelSize,
+        bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)
+          ?? CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+      let symbol = NSImage(
         systemSymbolName: name, accessibilityDescription: nil)?
         .withSymbolConfiguration(
           NSImage.SymbolConfiguration(
-            pointSize: Self.iconSize, weight: .medium))
+            pointSize: Self.iconSize, weight: Self.iconWeight))
     else { return nil }
 
-    let image = NSImage(size: NSSize(width: box, height: box), flipped: false) {
-      rect in
-      let size = base.size
-      let target = NSRect(
-        x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
-        width: size.width, height: size.height)
-      base.draw(in: target)
-      NSColor.secondaryLabelColor.set()
-      target.fill(using: .sourceAtop)
-      return true
-    }
+    context.scaleBy(x: scale, y: scale)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(
+      cgContext: context, flipped: false)
 
-    var proposed = NSRect(x: 0, y: 0, width: box, height: box)
-    return image.cgImage(
-      forProposedRect: &proposed, context: nil, hints: nil)
+    let size = symbol.size
+    let target = NSRect(
+      x: (box - size.width) / 2, y: (box - size.height) / 2,
+      width: size.width, height: size.height)
+    symbol.draw(in: target)
+    NSColor.secondaryLabelColor.set()
+    target.fill(using: .sourceAtop)
+
+    NSGraphicsContext.restoreGraphicsState()
+    return context.makeImage()
   }
 
   // MARK: - 绘制（只负责悬停底衬）
