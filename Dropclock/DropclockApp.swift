@@ -30,6 +30,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   internal let SecondThreshold: CGFloat = 50
 
   private var statusIconUpdateTimer: Timer?
+  /// 当前状态栏刷新间隔，用于在偏好变更后重启定时器
+  private var statusIconInterval: TimeInterval = 0
   /// 所有计时器共用一个每秒 tick，避免 N 个计时器开 N 个 Timer。
   private var tickTimer: Timer?
   /// 循环闹铃时已结束、但需要留在列表里等用户手动停止的计时器。
@@ -157,7 +159,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // 导致 isMenuOpen 一直为 true。
     isMenuOpen = false
     stopMenuRefreshTimer()
-    // 打开期间状态栏被冻结，这里补一次，把它和实际剩余时间对齐。
+    // 打开期间被推迟的重建，在这里补上（内容没变的话 updateMenu 自己会跳过）
+    if needsMenuRebuild {
+      needsMenuRebuild = false
+      updateMenu()
+    }
+    // 打开期间宽度被冻结，这里补一次，和实际剩余时间对齐
     updateStatusIcon()
   }
   
@@ -178,13 +185,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   /// 菜单打开时只刷新每一行的文字，不重建菜单。
   private func refreshOpenMenuRows() {
     let ids = Set(activeTimers.map { $0.id })
-    guard ids == Set(rowViews.keys) else {
-      // 条目增减了，重建一次；屏幕上这份要等下次打开才会变
-      updateMenu()
-      return
+    if ids != Set(rowViews.keys) {
+      // 条目增减了：重建推迟到关闭后，屏幕上这份不能动（换菜单会打断跟踪）
+      needsMenuRebuild = true
     }
-
-    for (timerId, view) in rowViews {
+    // 还在的行继续原地刷新，避免整份菜单停在最后一帧
+    for (timerId, view) in rowViews where ids.contains(timerId) {
       let row = menuRowText(for: timerId)
       view.setContent(text: row.text, isPaused: row.isPaused)
     }
@@ -246,6 +252,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     if button.font != Self.statusTextFont {
       button.font = Self.statusTextFont
     }
+    if text.isEmpty {
+      clearStatusTitle()
+      return
+    }
     if let cell = button.cell as? NSButtonCell, cell.title != text {
       cell.title = text
       button.needsDisplay = true
@@ -266,6 +276,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  /// 图片赋值去重。图标模式下每秒重设 `button.image` 和重设标题一样，
+  /// 会让状态项重新布局；内容没变就不动它。
+  private var lastStatusImageKey = ""
+
+  private func applyStatusImage(_ image: NSImage?, key: String) {
+    guard lastStatusImageKey != key else { return }
+    lastStatusImageKey = key
+    statusItem?.button?.image = image
+  }
+
   /// 自行维护状态项宽度。倒计时只会变窄，所以菜单打开期间冻结宽度不会截断文字；
   /// 一旦在菜单打开时改宽度，整份菜单仍会跟着平移。
   private func updateStatusItemLength(for text: String) {
@@ -280,6 +300,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   internal func updateStatusIcon() {
+    syncStatusIconInterval()
+
     if UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar")
       && runningTimerCount > 0
     {
@@ -306,7 +328,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             timer.name ?? "计时器", maxWidth: Self.menuBarNameWidth)
           let displayText = "\(displayName): \(formattedTime)"
           
-          statusItem?.button?.image = nil
+          applyStatusImage(nil, key: "text")
           setStatusTitle(displayText)
           return
         }
@@ -327,13 +349,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         accessibilityDescription: nil)
       {
         symbolImage.size = NSSize(width: 18, height: 18)
-        statusItem?.button?.image = symbolImage
+        applyStatusImage(symbolImage, key: "symbol|\(symbolName)")
       } else {
         print("SF Symbol not found.")
       }
     }
     else if UserDefaults.standard.bool(forKey: "useCustomMenuBarIcon") {
-      statusItem?.button?.image = nil
+      applyStatusImage(nil, key: "word")
       setStatusTitle(UserDefaults.standard.string(forKey: "customMenuBarWord") ?? "")
     }
     else {
@@ -376,11 +398,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           combinedImage.unlockFocus()
           combinedImage.isTemplate = true  // Ensure template image
           
-          statusItem?.button?.image = combinedImage
+          applyStatusImage(combinedImage, key: "badge|\(text)")
           clearStatusTitle()
         } else {
           print("SF Symbol not found.")
-          statusItem?.button?.image = nil
+          applyStatusImage(nil, key: "badgeText")
           setStatusTitle("\(activeTimers.count)")
         }
       } else {
@@ -396,7 +418,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           accessibilityDescription: nil)
         {
           symbolImage.size = NSSize(width: 18, height: 18)
-          statusItem?.button?.image = symbolImage
+          applyStatusImage(symbolImage, key: "clock")
         } else {
           print("SF Symbol not found.")
         }
@@ -421,16 +443,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     dragTimerPanel = nil
   }
   
+  /// 建一个挂在 common 模式上的重复定时器。
+  ///
+  /// `Timer.scheduledTimer` 只挂 `.default`，而菜单打开、拖拽等事件跟踪期间
+  /// run loop 处于 `.eventTracking` 模式，默认模式的定时器会整个停摆：
+  /// 状态栏数字不动、计时器到点也不触发。
+  private func makeCommonTimer(
+    interval: TimeInterval, _ block: @escaping () -> Void
+  ) -> Timer {
+    let timer = Timer(timeInterval: interval, repeats: true) { _ in block() }
+    RunLoop.main.add(timer, forMode: .common)
+    return timer
+  }
+
   private func startStatusIconUpdateTimer() {
     statusIconUpdateTimer?.invalidate()
-    if UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar") {
-      statusIconUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-        self?.updateStatusIcon()
-      }
-    } else {
-      statusIconUpdateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-        self?.updateStatusIcon()
-      }
+    let interval: TimeInterval =
+      UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar") ? 1 : 60
+    statusIconInterval = interval
+    statusIconUpdateTimer = makeCommonTimer(interval: interval) { [weak self] in
+      self?.updateStatusIcon()
+    }
+  }
+
+  /// 偏好里「在菜单栏显示下一个计时器」变化后，刷新间隔要跟着从 60s 收到 1s，
+  /// 否则要等下次启动才生效。
+  private func syncStatusIconInterval() {
+    let wanted: TimeInterval =
+      UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar") ? 1 : 60
+    if wanted != statusIconInterval {
+      startStatusIconUpdateTimer()
     }
   }
   
@@ -441,8 +483,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     if hasRunning {
       guard tickTimer == nil else { return }
-      tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) {
-        [weak self] _ in
+      tickTimer = makeCommonTimer(interval: 1) { [weak self] in
         self?.checkExpiredTimers()
       }
     } else {
@@ -696,6 +737,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
   /// 从列表里彻底移除某个计时器（含已结束仍残留的条目）。
   private func removeTimerEntry(id: UUID) {
+    pendingAlerts.removeAll { $0.id == id }
     guard let index = activeTimers.firstIndex(where: { $0.id == id })
     else { return }
     activeTimers.remove(at: index)
@@ -729,6 +771,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     finishedTimerIds.remove(timerId)
+    pendingAlerts.removeAll { $0.id == timerId }
     if let recordId = timerToRemove.recordId {
       HistoryStore.shared.markCancelled(recordId: recordId)
     }
@@ -795,6 +838,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
   
   private var lastMenuSignature: String?
+  /// 菜单打开期间被推迟的重建请求
+  private var needsMenuRebuild = false
   /// 当前菜单里每一行对应的视图，用于菜单打开期间原地刷新文字
   private var rowViews: [UUID: HoverView] = [:]
 
@@ -811,6 +856,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func updateMenu() {
+    // 菜单正被跟踪时替换 statusItem.menu，屏幕上是旧对象、替换不会生效，
+    // 还可能打断跟踪。推迟到关闭后再重建。
+    if isMenuOpen {
+      needsMenuRebuild = true
+      return
+    }
+
     let signature = menuSignature()
     guard signature != lastMenuSignature else { return }
     lastMenuSignature = signature
