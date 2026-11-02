@@ -38,7 +38,7 @@ class NameInputPanel: NSObject {
     blurView.blendingMode = .behindWindow
     blurView.state = .active
     blurView.wantsLayer = true
-    blurView.layer?.cornerRadius = 18
+    blurView.layer?.cornerRadius = 16
     blurView.layer?.cornerCurve = .continuous
     blurView.layer?.masksToBounds = true
 

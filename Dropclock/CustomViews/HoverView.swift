@@ -189,9 +189,13 @@ final class HoverView: NSView {
 
   private func drawBackground(in rect: NSRect) {
     let path = NSBezierPath(
-      roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 5, yRadius: 5)
-    NSColor.labelColor.withAlphaComponent(0.12).setFill()
-    path.fill()
+      roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6)
+    // 用 labelColor 做渐变，明暗模式下都能透出层次，而不是一块死板的灰
+    let gradient = NSGradient(colors: [
+      NSColor.labelColor.withAlphaComponent(0.13),
+      NSColor.labelColor.withAlphaComponent(0.05),
+    ])
+    gradient?.draw(in: path, angle: -90)
   }
 
   // MARK: - 交互
