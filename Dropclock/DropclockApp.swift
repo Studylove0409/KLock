@@ -236,8 +236,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           let formattedTime = TimerTextFormatter.duration(remainingTime)
           let displayName = truncatedName(
             timer.name ?? "计时器", maxWidth: Self.menuBarNameWidth)
-          let pausedMark = timer.pausedRemaining == nil ? "" : " ⏸"
-          let displayText = "\(displayName): \(formattedTime)\(pausedMark)"
+          let displayText = "\(displayName): \(formattedTime)"
           
           statusItem?.button?.image = nil
           statusItem?.button?.title = displayText
@@ -416,9 +415,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let formatted: String
     if isFinished {
       formatted = "已结束"
-    } else if isPaused {
-      formatted = "\(TimerTextFormatter.duration(remaining)) · 暂停"
     } else {
+      // 不追加「暂停」字样：文字长度一变行宽就变，菜单会左右跳。
+      // 暂停状态用文字变灰 + 图标切换来表达。
       formatted = TimerTextFormatter.duration(remaining)
     }
 
@@ -768,7 +767,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let customView = HoverView(
           text: row.text,
           isPaused: row.isPaused,
-          frame: NSRect(x: 0, y: 0, width: 270, height: 24),
+          frame: NSRect(
+            x: 0, y: 0, width: HoverView.rowWidth,
+            height: HoverView.rowHeight),
           onTogglePause: { [weak self] in
             guard let self = self else { return ("", false) }
             self.togglePause(id: timerId)

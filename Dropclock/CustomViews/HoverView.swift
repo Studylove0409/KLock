@@ -35,6 +35,14 @@ final class HoverView: NSView {
   private static let rightInset: CGFloat = 8
   private static let iconSpacing: CGFloat = 6
 
+  /// 行宽固定：内容变化绝不能改变这一行的宽度，否则菜单整体会左右跳。
+  static let rowWidth: CGFloat = 270
+  static let rowHeight: CGFloat = 24
+
+  override var intrinsicContentSize: NSSize {
+    NSSize(width: Self.rowWidth, height: Self.rowHeight)
+  }
+
   init(
     text: String,
     isPaused: Bool,
@@ -52,7 +60,7 @@ final class HoverView: NSView {
     textField.drawsBackground = false
     textField.stringValue = text
     textField.font = NSFont.systemFont(ofSize: 13)
-    textField.textColor = .labelColor
+    textField.textColor = isPaused ? .secondaryLabelColor : .labelColor
     textField.lineBreakMode = .byTruncatingTail
     textField.translatesAutoresizingMaskIntoConstraints = false
     addSubview(textField)
@@ -258,6 +266,8 @@ final class HoverView: NSView {
     let changed = isPaused != self.isPaused
     self.isPaused = isPaused
     textField.stringValue = text
+    // 用颜色而不是追加文字来表示暂停：文字长度一变，行宽就会变，菜单会左右跳
+    textField.textColor = isPaused ? .secondaryLabelColor : .labelColor
     refreshIconContents(animated: changed)
 
     // 文字跟着呼吸一下，避免硬切
