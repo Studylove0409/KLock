@@ -157,6 +157,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // 导致 isMenuOpen 一直为 true。
     isMenuOpen = false
     stopMenuRefreshTimer()
+    // 打开期间状态栏被冻结，这里补一次，把它和实际剩余时间对齐。
+    updateStatusIcon()
   }
   
   private var menuRefreshTimer: Timer?
@@ -228,7 +230,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  /// 状态栏文字统一用等宽数字：比例字体里「1」比「8」窄，
+  /// 每秒刷新会让状态项宽度来回变，菜单栏本身就在抖。
+  private static let statusTextFont = NSFont.monospacedDigitSystemFont(
+    ofSize: 13, weight: .medium)
+
+  /// 写入状态栏文字。相同内容不重复赋值，避免无谓的重排。
+  private func setStatusTitle(_ text: String) {
+    guard let button = statusItem?.button else { return }
+    if button.font != Self.statusTextFont {
+      button.font = Self.statusTextFont
+    }
+    if button.title != text {
+      button.title = text
+    }
+  }
+
   internal func updateStatusIcon() {
+    // 菜单正开着的时候，绝不碰状态栏。
+    // 实测：菜单打开期间只要重设标题（哪怕文字宽度完全相同），AppKit 就会重新
+    // 布局状态项，锚在它下面的整份菜单跟着平移 1~2pt，看起来就是左右晃动。
+    // 关闭时 menuWillClose 会补一次刷新，所以这里直接返回不会导致时间停住。
+    if isMenuOpen { return }
+
     if UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar")
       && runningTimerCount > 0
     {
@@ -256,12 +280,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           let displayText = "\(displayName): \(formattedTime)"
           
           statusItem?.button?.image = nil
-          statusItem?.button?.title = displayText
-          
-          if let button = statusItem?.button {
-            button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-          }
-          
+          setStatusTitle(displayText)
           return
         }
       }
@@ -288,10 +307,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     else if UserDefaults.standard.bool(forKey: "useCustomMenuBarIcon") {
       statusItem?.button?.image = nil
-      statusItem?.button?.title = UserDefaults.standard.string(forKey: "customMenuBarWord") ?? ""
-      if let button = statusItem?.button {
-        button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-      }
+      setStatusTitle(UserDefaults.standard.string(forKey: "customMenuBarWord") ?? "")
     }
     else {
       if runningTimerCount > 0 {
