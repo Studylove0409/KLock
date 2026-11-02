@@ -67,9 +67,6 @@ class PreferencesViewModel: ObservableObject {
   @Published var useCustomAlarmSound: Bool = false
   @Published var customAlarmSoundName: String = ""
 
-  @AppStorage("selectedReminderListID") private var selectedReminderListID:
-    String = ""
-
   private struct Keys {
     static let allowReminders = "allowReminders"
     static let deleteReminders = "deleteReminders"
@@ -78,7 +75,6 @@ class PreferencesViewModel: ObservableObject {
     static let allowFiveMinuteMode = "allowFiveMinuteMode"
     static let ignoreShortTimers = "ignoreShortTimers"
     static let shortTimerThresholdMinutes = "shortTimerThresholdMinutes"
-    static let selectedReminderListIdentifier = "SelectedReminderListIdentifier"
     static let viewAsMinutes = "viewAsMinutes"
     static let showDragIndicator = "showDragIndicator"
     static let changeRubberbandColor = "changeRubberbandColor"
@@ -161,8 +157,10 @@ class PreferencesViewModel: ObservableObject {
   }
 
   private func loadSelectedList() {
+    let storedID = UserDefaults.standard.string(
+      forKey: RemindersManager.selectedReminderListKey)
     if let storedList = RemindersManager.shared.fetchReminderLists().first(
-      where: { $0.calendarIdentifier == selectedReminderListID })
+      where: { $0.calendarIdentifier == storedID })
     {
       selectedList = storedList
     } else if reminderLists.isEmpty == false {
@@ -178,7 +176,8 @@ class PreferencesViewModel: ObservableObject {
     }
     if let selected = selectedList {
       UserDefaults.standard.set(
-        selected.calendarIdentifier, forKey: Keys.selectedReminderListIdentifier
+        selected.calendarIdentifier,
+        forKey: RemindersManager.selectedReminderListKey
       )
     }
     UserDefaults.standard.set(allowReminders, forKey: Keys.allowReminders)

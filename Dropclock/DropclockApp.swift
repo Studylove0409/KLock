@@ -55,6 +55,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       setupDrag(for: button)
     }
     NotificationManager.shared.checkForPermission()
+    RemindersManager.migrateSelectedReminderListIfNeeded()
     loadSavedTimers()
     
     updateMenu()
@@ -372,7 +373,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ?? (dragTimeInterval > 0 ? (Date(), dragTimeInterval) : nil)
     {
       let timerId = UUID()
-      var reminderId: String? = nil
+      let reminderId: String? = nil
       
       let timerObj = Timer.scheduledTimer(
         withTimeInterval: timerData.duration, repeats: false
@@ -390,12 +391,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           let reminderNotes =
           "你的 \(Int(timerData.duration / 60)) 分钟计时已结束。"
           let reminderTime = Date().addingTimeInterval(timerData.duration)
-          
-          do {
-            reminderId = try RemindersManager.shared.createReminder(
-              title: reminderTitle, notes: reminderNotes, dueDate: reminderTime)
-          } catch {
-            print("Failed to create reminder: \(error.localizedDescription)")
+
+          // 首次使用会在这里弹出「提醒事项」授权框，授权成功后再创建。
+          Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            do {
+              let createdId = try await RemindersManager.shared
+                .createReminderAfterEnsuringAccess(
+                  title: reminderTitle, notes: reminderNotes,
+                  dueDate: reminderTime)
+              self.assignReminderId(createdId, to: timerId)
+            } catch {
+              print("Failed to create reminder: \(error.localizedDescription)")
+              self.showReminderError(error)
+            }
           }
         }
       }
@@ -419,7 +428,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     nameInputPanel?.cleanup()
     nameInputPanel = nil
   }
-  
+
+  /// 提醒事项创建失败时给出可见反馈，避免只写日志导致用户完全无感。
+  private func showReminderError(_ error: Error) {
+    let message: String
+    if let reminderError = error as? RemindersError {
+      switch reminderError {
+      case .accessDenied:
+        message =
+          "没有「提醒事项」的访问权限。请到「系统设置 › 隐私与安全性 › 提醒事项」中允许 Dropclock。"
+      case .noReminderListSelected:
+        message = "没有可用的提醒列表。请在偏好设置的「提醒」分页中重新选择一个列表。"
+      case .reminderCreationFailed(let underlying):
+        message = "创建提醒失败：\(underlying.localizedDescription)"
+      case .reminderDeletionFailed(let underlying):
+        message = "删除提醒失败：\(underlying.localizedDescription)"
+      case .reminderNotFound:
+        message = "找不到对应的提醒，它可能已在「提醒事项」中被删除。"
+      }
+    } else {
+      message = error.localizedDescription
+    }
+
+    DispatchQueue.main.async {
+      NSApp.activate(ignoringOtherApps: true)
+      let alert = NSAlert()
+      alert.messageText = "无法创建提醒事项"
+      alert.informativeText = message
+      alert.alertStyle = .warning
+      alert.addButton(withTitle: "好")
+      alert.runModal()
+    }
+  }
+
+  /// 提醒是异步创建的，成功后把 ID 回写到对应计时器，删除计时器时才能同步删提醒。
+  private func assignReminderId(_ reminderId: String, to timerId: UUID) {
+    guard let index = activeTimers.firstIndex(where: { $0.id == timerId })
+    else { return }
+    activeTimers[index].reminderId = reminderId
+    saveTimers()
+  }
+
   private func timerFinished(id: UUID) {
     if let index = activeTimers.firstIndex(where: { $0.id == id }) {
       let timer = activeTimers[index]

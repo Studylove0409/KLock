@@ -12,7 +12,36 @@ class RemindersManager {
   static let shared = RemindersManager()
   private let eventStore = EKEventStore()
 
+  /// 读取与写入提醒列表必须共用这个键，否则设置里选的列表永远传不到创建逻辑。
+  static let selectedReminderListKey = "SelectedReminderList"
+  /// 1.9 版本曾用过的键名，启动时迁移一次。
+  static let legacySelectedReminderListKey = "SelectedReminderListIdentifier"
+
   private init() {}
+
+  /// 把旧键里的列表 ID 迁移到统一键，避免升级后选择丢失。
+  static func migrateSelectedReminderListIfNeeded() {
+    let defaults = UserDefaults.standard
+    guard defaults.string(forKey: selectedReminderListKey) == nil else { return }
+    if let legacy = defaults.string(forKey: legacySelectedReminderListKey),
+      !legacy.isEmpty
+    {
+      defaults.set(legacy, forKey: selectedReminderListKey)
+    }
+  }
+
+  /// 当前选中的提醒列表；未选择时退回系统默认列表，尽量不让建提醒失败。
+  func selectedReminderCalendar() -> EKCalendar? {
+    if let listID = UserDefaults.standard.string(
+      forKey: Self.selectedReminderListKey),
+      let calendar = fetchReminderLists().first(where: {
+        $0.calendarIdentifier == listID
+      })
+    {
+      return calendar
+    }
+    return eventStore.defaultCalendarForNewReminders()
+  }
 
   func checkAuthorizationStatus() -> EKAuthorizationStatus {
     return EKEventStore.authorizationStatus(for: .reminder)
@@ -58,6 +87,15 @@ class RemindersManager {
     return eventStore.calendars(for: .reminder)
   }
 
+  /// 先确保拿到权限再创建，首次使用时才能正常弹出授权框。
+  func createReminderAfterEnsuringAccess(
+    title: String, notes: String?, dueDate: Date
+  ) async throws -> String {
+    let granted = await requestAccess()
+    guard granted else { throw RemindersError.accessDenied }
+    return try createReminder(title: title, notes: notes, dueDate: dueDate)
+  }
+
   @discardableResult
   func createReminder(title: String, notes: String?, dueDate: Date) throws
     -> String
@@ -73,12 +111,7 @@ class RemindersManager {
       }
     }
 
-    guard
-      let listID = UserDefaults.standard.string(forKey: "SelectedReminderList"),
-      let calendar = fetchReminderLists().first(where: {
-        $0.calendarIdentifier == listID
-      })
-    else {
+    guard let calendar = selectedReminderCalendar() else {
       throw RemindersError.noReminderListSelected
     }
 
