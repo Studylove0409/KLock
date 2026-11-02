@@ -28,6 +28,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<string>Dropclock</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.Wrkx.Dropclock.local</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -55,6 +57,11 @@ PLIST
 echo "==> 拷贝音频资源"
 cp Dropclock/Sounds/*.mp3 "$APP/Contents/Resources/"
 
+echo "==> 拷贝图标"
+if [[ -f assets/AppIcon.icns ]]; then
+  cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+fi
+
 echo "==> 临时签名"
 # Desktop 属于 iCloud 同步目录，直接 codesign 会因扩展属性报 detritus 错误，
 # 所以先在临时目录签名再拷回。
@@ -69,9 +76,32 @@ codesign --verify "$APP"
 
 echo "==> 完成: $APP"
 
-if [[ "${1:-}" == "--run" ]]; then
+RUN=false
+INSTALL=false
+FORCE=false
+for arg in "$@"; do
+  case "$arg" in
+    --run) RUN=true ;;
+    --install) INSTALL=true ;;
+    --force) FORCE=true ;;
+  esac
+done
+
+if $RUN; then
   pkill -f "$APP" 2>/dev/null || true
   sleep 1
   open "$APP"
   echo "==> 已启动"
 fi
+
+if $INSTALL; then
+  TARGET="/Applications/Dropclock.app"
+  if [[ -d "$TARGET" ]] && ! $FORCE; then
+    echo "!! $TARGET 已存在，未覆盖。确认替换请追加 --force"
+  else
+    rm -rf "$TARGET"
+    ditto "$APP" "$TARGET"
+    echo "==> 已安装到 $TARGET"
+  fi
+fi
+

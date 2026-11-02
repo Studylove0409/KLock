@@ -48,6 +48,37 @@ expect(
 expect(
   cutLatin.count > 12, "英文能比旧逻辑多吃到一些字符（旧逻辑固定 12 字）")
 
+// MARK: - 历史记录
+
+print("HistoryStore")
+let sample = [
+  TimerRecord(id: UUID(), name: "泡面", duration: 300, finishedAt: Date()),
+  TimerRecord(id: UUID(), name: "Meeting", duration: 3600, finishedAt: Date()),
+]
+let encoded = HistoryStore.encode(sample)
+expect(encoded != nil, "可以编码")
+let decodedRecords = encoded.flatMap(HistoryStore.decode)
+expect(decodedRecords?.count == 2, "可以解码回两条")
+expect(decodedRecords?.first?.name == "泡面", "字段内容完整")
+expect(HistoryStore.decode(Data("不是 JSON".utf8)) == nil, "脏数据返回 nil")
+
+// MARK: - 旧版存档兼容
+
+print("SavedTimer 兼容性")
+let legacyJSON = """
+[{"id":"11111111-2222-3333-4444-555555555555","startTime":800000000,"duration":60}]
+""".data(using: .utf8)!
+let legacyDecoded = try? JSONDecoder().decode([SavedTimer].self, from: legacyJSON)
+expect(legacyDecoded?.count == 1, "缺少 isFinished 的旧存档仍可解码")
+expect(legacyDecoded?.first?.isFinished == nil, "旧存档的 isFinished 为 nil")
+
+let finishedJSON = """
+[{"id":"11111111-2222-3333-4444-555555555555","startTime":800000000,"duration":60,"isFinished":true}]
+""".data(using: .utf8)!
+let finishedDecoded = try? JSONDecoder().decode(
+  [SavedTimer].self, from: finishedJSON)
+expect(finishedDecoded?.first?.isFinished == true, "新存档能读回已结束标记")
+
 print("")
 if failures == 0 {
   print("全部通过")

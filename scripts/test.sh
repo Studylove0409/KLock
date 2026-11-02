@@ -8,6 +8,8 @@ OUT="$(mktemp -t dropclock-tests)"
 
 swiftc -O -sdk "$SDK" -target arm64-apple-macos13.0 -swift-version 5 \
   Dropclock/Support/TimerTextFormatter.swift \
+  Dropclock/Model/HistoryStore.swift \
+  Dropclock/Model/SavedTimers.swift \
   Tests/main.swift \
   -o "$OUT"
 
