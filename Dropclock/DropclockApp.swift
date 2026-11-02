@@ -235,24 +235,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   private static let statusTextFont = NSFont.monospacedDigitSystemFont(
     ofSize: 13, weight: .medium)
 
-  /// 写入状态栏文字。相同内容不重复赋值，避免无谓的重排。
+  /// 写入状态栏文字。
+  ///
+  /// 刻意不走 `button.title`：给 NSStatusItem 设标题会触发状态项重新布局，
+  /// 锚在它下面的下拉菜单会被带着平移 1~2pt（实测即使新旧文字等宽也照样发生）。
+  /// 改成直接写按钮 cell 的标题，只会重绘不会重排，菜单打开期间也能实时刷新；
+  /// 代价是宽度不再由系统托管，所以下面自己算并设置 item.length。
   private func setStatusTitle(_ text: String) {
     guard let button = statusItem?.button else { return }
     if button.font != Self.statusTextFont {
       button.font = Self.statusTextFont
     }
-    if button.title != text {
-      button.title = text
+    if let cell = button.cell as? NSButtonCell, cell.title != text {
+      cell.title = text
+      button.needsDisplay = true
+    }
+    updateStatusItemLength(for: text)
+  }
+
+  /// 清掉文字，把宽度交还给系统（图标模式用）。
+  private func clearStatusTitle() {
+    guard let button = statusItem?.button, let item = statusItem else { return }
+    if let cell = button.cell as? NSButtonCell, !cell.title.isEmpty {
+      cell.title = ""
+      button.needsDisplay = true
+    }
+    // 菜单打开时不能改宽度，否则整份菜单会跟着平移；关闭时会再走一次这里。
+    if item.length != NSStatusItem.variableLength, !isMenuOpen {
+      item.length = NSStatusItem.variableLength
+    }
+  }
+
+  /// 自行维护状态项宽度。倒计时只会变窄，所以菜单打开期间冻结宽度不会截断文字；
+  /// 一旦在菜单打开时改宽度，整份菜单仍会跟着平移。
+  private func updateStatusItemLength(for text: String) {
+    guard let item = statusItem, !isMenuOpen else { return }
+    let textWidth = NSAttributedString(
+      string: text, attributes: [.font: Self.statusTextFont]
+    ).size().width
+    let width = ceil(textWidth) + 6
+    if abs(item.length - width) > 0.5 {
+      item.length = width
     }
   }
 
   internal func updateStatusIcon() {
-    // 菜单正开着的时候，绝不碰状态栏。
-    // 实测：菜单打开期间只要重设标题（哪怕文字宽度完全相同），AppKit 就会重新
-    // 布局状态项，锚在它下面的整份菜单跟着平移 1~2pt，看起来就是左右晃动。
-    // 关闭时 menuWillClose 会补一次刷新，所以这里直接返回不会导致时间停住。
-    if isMenuOpen { return }
-
     if UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar")
       && runningTimerCount > 0
     {
@@ -287,7 +314,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     if UserDefaults.standard.bool(forKey: "useCustomMenuBarSymbol") || UserDefaults.standard.bool(forKey: "useAlternativeMenuBarIcon") {
-      statusItem?.button?.title = ""
+      clearStatusTitle()
       let symbolName: String
       if UserDefaults.standard.bool(forKey: "useCustomMenuBarSymbol") && (UserDefaults.standard.string(forKey: "customMenuBarSymbol")) != "" {
         symbolName = UserDefaults.standard.string(forKey: "customMenuBarSymbol") ?? "arrow.circlepath"
@@ -350,14 +377,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           combinedImage.isTemplate = true  // Ensure template image
           
           statusItem?.button?.image = combinedImage
-          statusItem?.button?.title = ""
+          clearStatusTitle()
         } else {
           print("SF Symbol not found.")
-          statusItem?.button?.title = "\(activeTimers.count)"
           statusItem?.button?.image = nil
+          setStatusTitle("\(activeTimers.count)")
         }
       } else {
-        statusItem?.button?.title = ""
+        clearStatusTitle()
         let symbolName: String
         if #available(macOS 15.3, *) {
           symbolName = "clock.arrow.trianglehead.counterclockwise.rotate.90"
