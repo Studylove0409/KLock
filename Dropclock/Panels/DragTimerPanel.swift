@@ -1,10 +1,19 @@
 import AppKit
 import SwiftUI
 
+/// 拖拽过程中跟随鼠标的时间预览。
 class DragTimerPanel {
   private var panel: NSPanel?
+  private var blurView: NSVisualEffectView?
   private var timerLabel: NSTextField?
   private var endTimeLabel: NSTextField?
+
+  private static let panelHeight: CGFloat = 68
+  private static let minWidth: CGFloat = 118
+  private static let maxWidth: CGFloat = 250
+  private static let timerFont = NSFont.monospacedDigitSystemFont(
+    ofSize: 23, weight: .semibold)
+  private static let endFont = NSFont.systemFont(ofSize: 11, weight: .medium)
 
   var frame: NSRect {
     return panel?.frame ?? .zero
@@ -14,7 +23,7 @@ class DragTimerPanel {
     cleanup()
 
     guard let screen = NSScreen.main else { return }
-    let windowSize = NSSize(width: 120, height: 50)
+    let windowSize = NSSize(width: Self.minWidth, height: Self.panelHeight)
     let windowOrigin = NSPoint(
       x: screen.frame.midX - windowSize.width / 2,
       y: screen.frame.midY - windowSize.height / 2)
@@ -31,44 +40,48 @@ class DragTimerPanel {
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     panel.isMovable = false
     panel.isOpaque = false
-    // close() 时不让 AppKit 自行释放，否则与 ARC 的强引用叠加会造成过度释放。
-    panel.isReleasedWhenClosed = false
     panel.backgroundColor = .clear
     panel.hasShadow = true
+    // close() 时不让 AppKit 自行释放，否则与 ARC 的强引用叠加会造成过度释放。
+    panel.isReleasedWhenClosed = false
 
-    let blurView = NSVisualEffectView(frame: panel.contentView!.bounds)
+    let blurView = NSVisualEffectView(
+      frame: NSRect(origin: .zero, size: windowSize))
     blurView.material = .hudWindow
     blurView.blendingMode = .behindWindow
     blurView.state = .active
     blurView.wantsLayer = true
-    blurView.layer?.cornerRadius = 8
+    blurView.layer?.cornerRadius = 16
+    blurView.layer?.cornerCurve = .continuous
     blurView.layer?.masksToBounds = true
     blurView.layer?.borderWidth = 1
     blurView.layer?.borderColor =
-      NSColor.secondaryLabelColor.withAlphaComponent(0.2).cgColor
+      NSColor.white.withAlphaComponent(0.14).cgColor
+    blurView.autoresizingMask = [.width, .height]
+    self.blurView = blurView
 
-    let stackView = NSStackView()
+    // 等宽数字，避免每帧跳动时文字宽度抖动
+    let timerLabel = NSTextField(labelWithString: "00:00")
+    timerLabel.font = Self.timerFont
+    timerLabel.textColor = .white
+    timerLabel.alignment = .center
+    timerLabel.isBordered = false
+    timerLabel.drawsBackground = false
+    self.timerLabel = timerLabel
+
+    let endTimeLabel = NSTextField(labelWithString: "结束于 12:00")
+    endTimeLabel.font = Self.endFont
+    endTimeLabel.textColor = NSColor.white.withAlphaComponent(0.55)
+    endTimeLabel.alignment = .center
+    endTimeLabel.isBordered = false
+    endTimeLabel.drawsBackground = false
+    self.endTimeLabel = endTimeLabel
+
+    let stackView = NSStackView(views: [timerLabel, endTimeLabel])
     stackView.orientation = .vertical
     stackView.alignment = .centerX
-    stackView.spacing = 3
+    stackView.spacing = 1
     stackView.translatesAutoresizingMaskIntoConstraints = false
-
-    timerLabel = NSTextField(labelWithString: "00:00")
-    timerLabel?.font = NSFont.systemFont(ofSize: 16, weight: .medium)
-    timerLabel?.textColor = .white
-    timerLabel?.alignment = .center
-    timerLabel?.isBordered = false
-    timerLabel?.drawsBackground = false
-
-    endTimeLabel = NSTextField(labelWithString: "结束于 12:00")
-    endTimeLabel?.font = NSFont.systemFont(ofSize: 13)
-    endTimeLabel?.textColor = .white
-    endTimeLabel?.alignment = .center
-    endTimeLabel?.isBordered = false
-    endTimeLabel?.drawsBackground = false
-
-    stackView.addArrangedSubview(timerLabel!)
-    stackView.addArrangedSubview(endTimeLabel!)
 
     blurView.addSubview(stackView)
     panel.contentView?.addSubview(blurView)
@@ -76,11 +89,19 @@ class DragTimerPanel {
     NSLayoutConstraint.activate([
       stackView.centerXAnchor.constraint(equalTo: blurView.centerXAnchor),
       stackView.centerYAnchor.constraint(equalTo: blurView.centerYAnchor),
-      stackView.widthAnchor.constraint(
-        equalTo: blurView.widthAnchor, multiplier: 0.9),
+      stackView.leadingAnchor.constraint(
+        greaterThanOrEqualTo: blurView.leadingAnchor, constant: 14),
+      stackView.trailingAnchor.constraint(
+        lessThanOrEqualTo: blurView.trailingAnchor, constant: -14),
     ])
 
+    panel.alphaValue = 0
     panel.orderFront(nil)
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0.12
+      panel.animator().alphaValue = 1
+    }
+
     self.panel = panel
   }
 
@@ -89,16 +110,31 @@ class DragTimerPanel {
       self.timerLabel?.stringValue = timerText
       self.endTimeLabel?.stringValue = "结束于 \(endTimeText)"
 
-      let windowWidth = self.panel?.frame.width ?? 0
-      let windowHeight = self.panel?.frame.height ?? 0
+      guard let panel = self.panel else { return }
+
+      // 按文字实际宽度调整面板宽度，长文案（如「12 小时 45 分」）不会被截断
+      let textWidth = max(
+        TimerTextFormatter.width(of: timerText, font: Self.timerFont),
+        TimerTextFormatter.width(
+          of: "结束于 \(endTimeText)", font: Self.endFont))
+      let targetWidth = min(Self.maxWidth, max(Self.minWidth, textWidth + 34))
+      if abs(panel.frame.width - targetWidth) > 0.5 {
+        var newFrame = panel.frame
+        newFrame.size.width = targetWidth
+        panel.setFrame(newFrame, display: true)
+      }
+
+      let windowWidth = panel.frame.width
+      let windowHeight = panel.frame.height
       let newOrigin = NSPoint(
         x: point.x - windowWidth / 2,
         y: point.y - windowHeight / 2)
-      self.panel?.setFrameOrigin(newOrigin)
+      panel.setFrameOrigin(newOrigin)
     }
   }
 
   func cleanup() {
+    panel?.orderOut(nil)
     panel?.close()
     panel = nil
   }

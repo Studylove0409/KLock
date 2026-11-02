@@ -1,18 +1,22 @@
 import AppKit
 import SwiftUI
 
+/// 开启「自定义计时器名称」时，拖拽松手后弹出的小输入框。
 class NameInputPanel: NSObject {
   private var window: NSPanel?
   private var textField: NSTextField?
   private weak var delegate: NameInputPanelDelegate?
+
+  private static let panelSize = NSSize(width: 248, height: 142)
 
   init(delegate: NameInputPanelDelegate) {
     self.delegate = delegate
   }
 
   func show(at point: NSPoint) {
+    let size = Self.panelSize
     let panel = NSPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 160, height: 105),
+      contentRect: NSRect(origin: .zero, size: size),
       styleMask: [.titled, .fullSizeContentView],
       backing: .buffered,
       defer: false
@@ -23,101 +27,95 @@ class NameInputPanel: NSObject {
     panel.titlebarAppearsTransparent = true
     panel.titleVisibility = .hidden
     panel.isMovableByWindowBackground = true
+    panel.backgroundColor = .clear
+    panel.hasShadow = true
     // 同上：避免 close() 与 ARC 释放叠加导致崩溃。
     panel.isReleasedWhenClosed = false
 
-    let blurView = NSVisualEffectView(frame: panel.contentView!.bounds)
+    let blurView = NSVisualEffectView(
+      frame: NSRect(origin: .zero, size: size))
     blurView.material = .hudWindow
+    blurView.blendingMode = .behindWindow
     blurView.state = .active
     blurView.wantsLayer = true
-    blurView.layer?.cornerRadius = 8
+    blurView.layer?.cornerRadius = 18
+    blurView.layer?.cornerCurve = .continuous
+    blurView.layer?.masksToBounds = true
 
-    let stackView = NSStackView(frame: blurView.bounds)
-    stackView.orientation = .vertical
-    stackView.spacing = 8
-    stackView.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+    let titleLabel = NSTextField(labelWithString: "计时器名称")
+    titleLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    titleLabel.textColor = NSColor.white.withAlphaComponent(0.55)
+    titleLabel.alignment = .left
+    titleLabel.isBordered = false
+    titleLabel.drawsBackground = false
 
-    let label = NSTextField(labelWithString: "计时器名称")
-    label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-    label.textColor = .secondaryLabelColor
-    label.alignment = .left
-    label.isBordered = false
-    label.drawsBackground = false
-
-    let textField = NSTextField(
-      frame: NSRect(x: 0, y: 0, width: 50, height: 22))
+    let textField = NSTextField()
     textField.placeholderString =
       "计时器 \(UserDefaults.standard.integer(forKey: "timerCount") + 1)"
+    textField.font = NSFont.systemFont(ofSize: 14)
     textField.isEditable = true
     textField.isSelectable = true
     textField.delegate = self
-    textField.isBordered = true
+    textField.isBordered = false
     textField.isBezeled = true
     textField.bezelStyle = .roundedBezel
     textField.drawsBackground = true
-    textField.backgroundColor = .controlBackgroundColor
-    textField.textColor = .labelColor
-    textField.focusRingType = .default
-    textField.wantsLayer = false
-
-    let buttonStack = NSStackView()
-    buttonStack.orientation = .horizontal
-    buttonStack.spacing = 8
-    buttonStack.distribution = .fillEqually
+    textField.backgroundColor = NSColor.white.withAlphaComponent(0.12)
+    textField.textColor = .white
+    textField.focusRingType = .none
+    textField.translatesAutoresizingMaskIntoConstraints = false
 
     let cancelButton = NSButton(
-      frame: NSRect(x: 0, y: 0, width: 80, height: 22))
-    cancelButton.title = "取消"
+      title: "取消", target: self, action: #selector(cancelNameInput))
     cancelButton.bezelStyle = .rounded
-    cancelButton.target = self
-    cancelButton.action = #selector(cancelNameInput)
-    cancelButton.wantsLayer = true
+    cancelButton.controlSize = .large
+    cancelButton.keyEquivalent = "\u{1b}"
 
     let createButton = NSButton(
-      frame: NSRect(x: 0, y: 0, width: 80, height: 22))
-    createButton.title = "开始"
+      title: "开始", target: self, action: #selector(confirmNameInput))
     createButton.bezelStyle = .rounded
-    createButton.target = self
-    createButton.action = #selector(confirmNameInput)
+    createButton.controlSize = .large
+    createButton.bezelColor = .controlAccentColor
     createButton.keyEquivalent = "\r"
-    createButton.wantsLayer = true
 
-    buttonStack.addArrangedSubview(cancelButton)
-    buttonStack.addArrangedSubview(createButton)
+    let buttonStack = NSStackView(views: [cancelButton, createButton])
+    buttonStack.orientation = .horizontal
+    buttonStack.spacing = 10
+    buttonStack.distribution = .fillEqually
 
-    stackView.addArrangedSubview(label)
-    stackView.addArrangedSubview(textField)
-    stackView.addArrangedSubview(buttonStack)
+    let stack = NSStackView(views: [titleLabel, textField, buttonStack])
+    stack.orientation = .vertical
+    stack.alignment = .leading
+    stack.spacing = 10
+    stack.setCustomSpacing(16, after: textField)
+    stack.translatesAutoresizingMaskIntoConstraints = false
 
-    blurView.addSubview(stackView)
+    blurView.addSubview(stack)
     panel.contentView?.addSubview(blurView)
 
-    stackView.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
-      stackView.leadingAnchor.constraint(
-        equalTo: blurView.leadingAnchor, constant: 8),
-      stackView.trailingAnchor.constraint(
-        equalTo: blurView.trailingAnchor, constant: -8),
-      stackView.topAnchor.constraint(equalTo: blurView.topAnchor, constant: 8),
-      stackView.bottomAnchor.constraint(
-        equalTo: blurView.bottomAnchor, constant: -8),
+      stack.leadingAnchor.constraint(equalTo: blurView.leadingAnchor, constant: 18),
+      stack.trailingAnchor.constraint(equalTo: blurView.trailingAnchor, constant: -18),
+      stack.topAnchor.constraint(
+        equalTo: blurView.topAnchor, constant: 20),
+      textField.heightAnchor.constraint(equalToConstant: 30),
+      textField.widthAnchor.constraint(equalTo: stack.widthAnchor),
+      titleLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+      buttonStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
+      buttonStack.heightAnchor.constraint(equalToConstant: 30),
     ])
 
-    label.translatesAutoresizingMaskIntoConstraints = false
-    textField.translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-      label.leadingAnchor.constraint(equalTo: stackView.leadingAnchor),
-      label.trailingAnchor.constraint(equalTo: stackView.trailingAnchor),
-      textField.leadingAnchor.constraint(equalTo: stackView.leadingAnchor),
-      textField.trailingAnchor.constraint(equalTo: stackView.trailingAnchor),
-    ])
-
-    let panelOrigin = NSPoint(x: point.x - 125, y: point.y - 75)
+    let panelOrigin = NSPoint(x: point.x - size.width / 2, y: point.y - 120)
     panel.setFrameOrigin(panelOrigin)
 
+    panel.alphaValue = 0
     panel.orderFront(nil)
     panel.makeKeyAndOrderFront(nil)
     panel.level = .floating
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0.12
+      panel.animator().alphaValue = 1
+    }
 
     DispatchQueue.main.async {
       NSApp.activate(ignoringOtherApps: true)
@@ -143,6 +141,7 @@ class NameInputPanel: NSObject {
   }
 
   func cleanup() {
+    window?.orderOut(nil)
     window?.close()
     window = nil
     textField = nil
