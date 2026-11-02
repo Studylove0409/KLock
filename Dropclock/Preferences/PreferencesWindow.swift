@@ -11,7 +11,7 @@ class PreferencesWindowController: NSWindowController {
     let window = NSWindow(
       contentViewController: hostingController
     )
-    window.title = "Dropblock Preferences"
+    window.title = "Dropclock 偏好设置"
     window.setContentSize(NSSize(width: 400, height: 400))
     window.minSize = NSSize(width: 400, height: 200)
     window.styleMask = [.titled, .closable]

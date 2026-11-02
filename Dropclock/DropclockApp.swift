@@ -223,7 +223,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         if remainingTime > 0 {
           let formattedTime = formatTimeInterval(remainingTime)
-          let displayName = timer.name ?? "Timer"
+          let displayName = timer.name ?? "计时器"
           let truncatedName = displayName.count > 15
           ? String(displayName.prefix(12)) + "…"
           : displayName
@@ -386,9 +386,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             > (UserDefaults.standard.double(
               forKey: "shortTimerThresholdMinutes") * 60)
         {
-          let reminderTitle = name ?? "Timer \(activeTimers.count + 1)"
+          let reminderTitle = name ?? "计时器 \(activeTimers.count + 1)"
           let reminderNotes =
-          "Your timer for \(Int(timerData.duration / 60)) minute(s) has finished."
+          "你的 \(Int(timerData.duration / 60)) 分钟计时已结束。"
           let reminderTime = Date().addingTimeInterval(timerData.duration)
           
           do {
@@ -491,7 +491,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     if activeTimers.count > 0 {
       menu.addItem(
-        NSMenuItem(title: "Active Timers", action: nil, keyEquivalent: ""))
+        NSMenuItem(title: "进行中的计时器", action: nil, keyEquivalent: ""))
       
       for (index, timerInfo) in activeTimers.enumerated() {
         let remainingTime = timerInfo.startTime.addingTimeInterval(
@@ -499,13 +499,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ).timeIntervalSince(Date())
         let formattedTime = formatTimeInterval(remainingTime)
         
-        let displayName = timerInfo.name ?? "Timer \(index + 1)"
+        let displayName = timerInfo.name ?? "计时器 \(index + 1)"
         let menuItem = NSMenuItem()
         menuItem.representedObject = index
         
         let customView = HoverView(
           normalText: "\(displayName): \(formattedTime)",
-          hoverText: "Delete",
+          hoverText: "删除",
           frame: NSRect(x: 0, y: 0, width: 250, height: 22),
           index: index,
           target: self,
@@ -521,11 +521,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     menu.addItem(
       NSMenuItem(
-        title: "Preferences", action: #selector(preferences), keyEquivalent: ","
+        title: "偏好设置…", action: #selector(preferences), keyEquivalent: ","
       ))
     menu.addItem(
       NSMenuItem(
-        title: "Quit Dropclock", action: #selector(quit), keyEquivalent: "q"))
+        title: "退出 Dropclock", action: #selector(quit), keyEquivalent: "q"))
     
     statusItem?.menu = menu
   }

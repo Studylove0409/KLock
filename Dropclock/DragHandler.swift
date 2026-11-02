@@ -71,21 +71,21 @@ extension AppDelegate {
 
       let displayText: String
       if calculatedInterval < 60 {
-        displayText = "\(Int(calculatedInterval)) sec"
+        displayText = "\(Int(calculatedInterval)) 秒"
       } else if calculatedInterval < 300 {
         let minutes = Int(calculatedInterval) / 60
         let seconds = Int(calculatedInterval) - minutes * 60
-        displayText = "\(minutes) min \(seconds) sec"
+        displayText = "\(minutes) 分 \(seconds) 秒"
       } else {
         if calculatedInterval <= 3600
           || UserDefaults.standard.bool(forKey: "viewAsMinutes")
         {
           let minutes = Int(calculatedInterval) / 60
-          displayText = "\(minutes) min"
+          displayText = "\(minutes) 分钟"
         } else {
           let hours = Int(calculatedInterval) / 3600
           let minutes = Int(Int(calculatedInterval) - hours * 3600) / 60
-          displayText = "\(hours) hr \(minutes) min"
+          displayText = "\(hours) 小时 \(minutes) 分"
         }
       }
 

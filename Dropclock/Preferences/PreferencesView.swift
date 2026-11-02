@@ -40,12 +40,12 @@ struct PreferencesView: View {
       HStack(spacing: 0) {
         ForEach(
           [
-            (tab: PreferenceTab.general, icon: "gearshape", label: "General"),
+            (tab: PreferenceTab.general, icon: "gearshape", label: "通用"),
             (
               tab: PreferenceTab.reminders, icon: "bell.fill",
-              label: "Reminders"
+              label: "提醒"
             ),
-            (tab: PreferenceTab.timers, icon: "timer", label: "Timers"),
+            (tab: PreferenceTab.timers, icon: "timer", label: "计时器"),
           ], id: \.tab
         ) { tabInfo in
           Button {
@@ -128,10 +128,10 @@ struct PreferencesView: View {
 
   var generalSettingsView: some View {
     VStack(spacing: 20) {
-      SettingsSection(title: "General") {
+      SettingsSection(title: "通用") {
         SettingsRow(
-          title: "Start at Login",
-          helpText: "Automatically start Dropclock when you log in to your Mac."
+          title: "登录时启动",
+          helpText: "登录 Mac 时自动启动 Dropclock。"
         ) {
           Toggle("", isOn: $viewModel.startAtLogin)
             .toggleStyle(SwitchToggleStyle())
@@ -142,8 +142,8 @@ struct PreferencesView: View {
             }
         }
         SettingsRow(
-          title: "Show next timer in menu bar",
-          helpText: "Shows the next timer in the menu bar. Replaces Icon"
+          title: "在菜单栏显示下一个计时器",
+          helpText: "在菜单栏显示即将结束的计时器，替换原图标。"
         ) {
           Toggle("", isOn: $viewModel.showNextTimerInMenuBar)
             .toggleStyle(SwitchToggleStyle())
@@ -154,8 +154,8 @@ struct PreferencesView: View {
             }
         }
         SettingsRow(
-          title: "Alternative Menu Bar Icon",
-          helpText: "Changes the menu bar icon to a different style."
+          title: "备用菜单栏图标",
+          helpText: "将菜单栏图标换成另一种样式。"
         ) {
           Toggle("", isOn: $viewModel.useAlternativeMenuBarIcon)
             .toggleStyle(SwitchToggleStyle())
@@ -166,8 +166,8 @@ struct PreferencesView: View {
             }
         }
         SettingsRow(
-          title: "Custom Menu Bar Text",
-          helpText: "Changes the menu bar icon to text."
+          title: "自定义菜单栏文字",
+          helpText: "用文字替代菜单栏图标。"
         ) {
           Toggle("", isOn: $viewModel.useCustomMenuBarIcon)
             .toggleStyle(SwitchToggleStyle())
@@ -179,10 +179,10 @@ struct PreferencesView: View {
         }
         if viewModel.useCustomMenuBarIcon {
           SettingsRow(
-            title: "Custom Menu Bar Text",
-            helpText: "Enter custom text for the menu bar icon."
+            title: "自定义菜单栏文字",
+            helpText: "输入要显示在菜单栏上的文字。"
           ) {
-            TextField("Enter text", text: $viewModel.customMenuBarWord)
+            TextField("输入文字", text: $viewModel.customMenuBarWord)
               .textFieldStyle(RoundedBorderTextFieldStyle())
               .frame(width: 100)
               .onChangeCompat(viewModel.customMenuBarWord, publisher: viewModel.$customMenuBarWord) { _ in
@@ -191,8 +191,8 @@ struct PreferencesView: View {
           }
         }
         SettingsRow(
-          title: "Custom Menu Bar Symbol",
-          helpText: "Changes the menu bar icon to a custom SF Symbol."
+          title: "自定义菜单栏符号",
+          helpText: "使用自定义 SF Symbol 作为菜单栏图标。"
         ) {
           Toggle("", isOn: $viewModel.useCustomMenuBarSymbol)
             .toggleStyle(SwitchToggleStyle())
@@ -204,10 +204,10 @@ struct PreferencesView: View {
         }
         if viewModel.useCustomMenuBarSymbol {
           SettingsRow(
-            title: "Custom Menu Bar Symbol Name",
-            helpText: "Enter the name of the SF Symbol."
+            title: "自定义符号名称",
+            helpText: "输入 SF Symbol 的名称。"
           ) {
-            TextField("Enter text", text: $viewModel.customMenuBarSymbol)
+            TextField("输入文字", text: $viewModel.customMenuBarSymbol)
               .textFieldStyle(RoundedBorderTextFieldStyle())
               .frame(width: 100)
               .onChangeCompat(viewModel.customMenuBarSymbol, publisher: viewModel.$customMenuBarSymbol) { _ in
@@ -218,11 +218,11 @@ struct PreferencesView: View {
       }
       .padding(.top, 10)
 
-      SettingsSection(title: "View") {
+      SettingsSection(title: "显示") {
         SettingsRow(
-          title: "Show time in minutes only",
+          title: "仅以分钟显示时间",
           helpText:
-            "When enabled, the time will be shown in minutes only and not be formatet to hours and minutes"
+            "开启后时间只以分钟显示，不再转换为小时和分钟。"
         ) {
           Toggle("", isOn: $viewModel.viewAsMinutes)
             .toggleStyle(SwitchToggleStyle())
@@ -233,9 +233,9 @@ struct PreferencesView: View {
             }
         }
         SettingsRow(
-          title: "Show Rubberband",
+          title: "显示拖拽连线",
           helpText:
-            "When enabled, a rubberband will be shown from the menubar icon to the mouse cursor"
+            "开启后从菜单栏图标到鼠标指针之间显示一条连线。"
         ) {
           Toggle("", isOn: $viewModel.showDragIndicator)
             .toggleStyle(SwitchToggleStyle())
@@ -248,8 +248,8 @@ struct PreferencesView: View {
         if viewModel.showDragIndicator {
           HStack {
             SettingsRow(
-              title: "Change Rubberband Color",
-              helpText: "When enabled, a rubberband can be manually set"
+              title: "自定义连线颜色",
+              helpText: "开启后可手动指定连线颜色。"
             ) {
               Toggle("", isOn: $viewModel.changeRubberbandColor)
                 .toggleStyle(SwitchToggleStyle())
@@ -263,8 +263,8 @@ struct PreferencesView: View {
           if viewModel.changeRubberbandColor {
             HStack {
               SettingsRow(
-                title: "Rubberband Color",
-                helpText: "Select the color of the rubberband."
+                title: "连线颜色",
+                helpText: "选择拖拽连线的颜色。"
               ) {
                 ColorPicker("", selection: $viewModel.dragLineColor)
                   .frame(width: 40, alignment: .trailing)
@@ -279,11 +279,11 @@ struct PreferencesView: View {
 
   var reminderSettingsView: some View {
     VStack(spacing: 20) {
-      SettingsSection(title: "Reminders") {
+      SettingsSection(title: "提醒事项") {
         SettingsRow(
-          title: "Allow Reminders",
+          title: "允许创建提醒事项",
           helpText:
-            "When enabled, Dropclock will create reminders in the Apple Reminders app for each timer created. Reminders will always be rounded to the next minute due to how reminders work."
+            "开启后，每个新建的计时器都会在「提醒事项」中创建一条提醒。受提醒事项机制限制，时间会向上取整到整分钟。"
         ) {
           Toggle("", isOn: $viewModel.allowReminders)
             .toggleStyle(SwitchToggleStyle())
@@ -297,8 +297,8 @@ struct PreferencesView: View {
         Divider()
 
         SettingsRow(
-          title: "Reminder List",
-          helpText: "Choose the list where reminders will be created."
+          title: "提醒列表",
+          helpText: "选择提醒要创建到哪个列表。"
         ) {
           Picker("", selection: $viewModel.selectedList) {
             ForEach(viewModel.reminderLists, id: \.self) { list in
@@ -316,9 +316,9 @@ struct PreferencesView: View {
         Divider()
 
         SettingsRow(
-          title: "Delete Reminders",
+          title: "同步删除提醒",
           helpText:
-            "When enabled, reminders created by the app will be deleted if their corresponding timer entry is deleted."
+            "开启后，删除计时器时会一并删除由本应用创建的提醒。"
         ) {
           Toggle("", isOn: $viewModel.deleteReminders)
             .toggleStyle(SwitchToggleStyle())
@@ -333,8 +333,8 @@ struct PreferencesView: View {
         Divider()
 
         SettingsRow(
-          title: "Ignore Short Timers",
-          helpText: "When enabled, short timers will not be created as Reminder"
+          title: "忽略短时计时器",
+          helpText: "开启后，较短的计时器不会创建提醒。"
         ) {
           Toggle("", isOn: $viewModel.ignoreShortTimers)
             .toggleStyle(SwitchToggleStyle())
@@ -358,7 +358,7 @@ struct PreferencesView: View {
             .onChangeCompat(viewModel.shortTimerThresholdMinutes, publisher: viewModel.$shortTimerThresholdMinutes) { _ in
               viewModel.savePreferences()
             }
-            Text("\(Int(viewModel.shortTimerThresholdMinutes)) min")
+            Text("\(Int(viewModel.shortTimerThresholdMinutes)) 分钟")
               .frame(width: 50, alignment: .trailing)
           }
         }
@@ -368,11 +368,11 @@ struct PreferencesView: View {
 
   var timerSettingsView: some View {
     VStack(spacing: 20) {
-      SettingsSection(title: "Timers") {
+      SettingsSection(title: "计时器") {
         SettingsRow(
-          title: "Custom Timer Names",
+          title: "自定义计时器名称",
           helpText:
-            "When enabled, you can enter custom names for your timers while creating them."
+            "开启后，创建计时器时可以输入自定义名称。"
         ) {
           Toggle("", isOn: $viewModel.allowCustomNames)
             .toggleStyle(SwitchToggleStyle())
@@ -386,9 +386,9 @@ struct PreferencesView: View {
         Divider()
 
         SettingsRow(
-            title: "Play Alarm Sound",
+            title: "播放闹铃",
             helpText:
-              "When enabled, Dropclock plays an alarm sound as soon as a timer finishes."
+              "开启后，计时结束时立即播放闹铃。"
           ) {
             Toggle("", isOn: $viewModel.playAlarmSound)
             .toggleStyle(SwitchToggleStyle())
@@ -401,9 +401,9 @@ struct PreferencesView: View {
 
         if viewModel.playAlarmSound {
           SettingsRow(
-            title: "Keep playing until manually stopped",
+            title: "持续播放直到手动停止",
             helpText:
-              "Loops the alarm and keeps the finished timer in the list until you remove it."
+              "循环播放闹铃，并保留已结束的计时器，直到你手动删除它。"
           ) {
             Toggle("", isOn: $viewModel.loopAlarmUntilStopped)
               .toggleStyle(SwitchToggleStyle())
@@ -415,12 +415,12 @@ struct PreferencesView: View {
           }
 
           SettingsRow(
-            title: "Alarm Sound File",
+            title: "闹铃音频",
             helpText:
-              "Select one of the .mp3/.wav files that are part of the app."
+              "从应用自带的 .mp3/.wav 文件中选择一个。"
           ) {
             VStack(alignment: .trailing, spacing: 6) {
-              Toggle("Use custom sound file", isOn: $viewModel.useCustomAlarmSound)
+              Toggle("使用自定义音频文件", isOn: $viewModel.useCustomAlarmSound)
                 .toggleStyle(SwitchToggleStyle())
                 .frame(width: 220, alignment: .trailing)
                 .onChangeCompat(viewModel.useCustomAlarmSound, publisher: viewModel.$useCustomAlarmSound) { _ in
@@ -431,18 +431,18 @@ struct PreferencesView: View {
                 HStack {
                   Text(
                     viewModel.customAlarmSoundName.isEmpty
-                      ? "No file selected"
+                      ? "未选择文件"
                       : viewModel.customAlarmSoundName
                   )
                   .foregroundColor(.secondary)
                   .lineLimit(1)
-                  Button("Choose File…") {
+                  Button("选择文件…") {
                     isShowingSoundImporter = true
                   }
                 }
               } else {
                 if viewModel.availableAlarmSounds.isEmpty {
-                  Text("No sound files found")
+                  Text("未找到音频文件")
                     .foregroundColor(.secondary)
                     .frame(width: 180, alignment: .trailing)
                 } else {
@@ -465,9 +465,9 @@ struct PreferencesView: View {
         }
 
         SettingsRow(
-          title: "Enable 5 Minute Mode",
+          title: "启用 5 分钟模式",
           helpText:
-            "When enabled, dragging while CTRL-Key is held down will increase in 5 minute increments."
+            "开启后，按住 Control 拖拽将以 5 分钟为步进。"
         ) {
           Toggle("", isOn: $viewModel.allowFiveMinuteMode)
             .toggleStyle(SwitchToggleStyle())
@@ -481,9 +481,9 @@ struct PreferencesView: View {
         Divider()
 
         SettingsRow(
-          title: "Enable Seconds Mode",
+          title: "启用秒模式",
           helpText:
-            "When enabled, dragging while Shift-Key is held down will only increment in seconds."
+            "开启后，按住 Shift 拖拽仅以秒为步进。"
         ) {
           Toggle("", isOn: $viewModel.allowSecondsMode)
             .toggleStyle(SwitchToggleStyle())

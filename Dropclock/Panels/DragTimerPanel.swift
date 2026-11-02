@@ -58,7 +58,7 @@ class DragTimerPanel {
     timerLabel?.isBordered = false
     timerLabel?.drawsBackground = false
 
-    endTimeLabel = NSTextField(labelWithString: "at 12:00")
+    endTimeLabel = NSTextField(labelWithString: "结束于 12:00")
     endTimeLabel?.font = NSFont.systemFont(ofSize: 13)
     endTimeLabel?.textColor = .white
     endTimeLabel?.alignment = .center
@@ -85,7 +85,7 @@ class DragTimerPanel {
   func update(timerText: String, endTimeText: String, at point: NSPoint) {
     DispatchQueue.main.async {
       self.timerLabel?.stringValue = timerText
-      self.endTimeLabel?.stringValue = "at: \(endTimeText)"
+      self.endTimeLabel?.stringValue = "结束于 \(endTimeText)"
 
       let windowWidth = self.panel?.frame.width ?? 0
       let windowHeight = self.panel?.frame.height ?? 0

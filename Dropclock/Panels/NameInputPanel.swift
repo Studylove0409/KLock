@@ -35,7 +35,7 @@ class NameInputPanel: NSObject {
     stackView.spacing = 8
     stackView.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
 
-    let label = NSTextField(labelWithString: "Timer Name")
+    let label = NSTextField(labelWithString: "计时器名称")
     label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
     label.textColor = .secondaryLabelColor
     label.alignment = .left
@@ -45,7 +45,7 @@ class NameInputPanel: NSObject {
     let textField = NSTextField(
       frame: NSRect(x: 0, y: 0, width: 50, height: 22))
     textField.placeholderString =
-      "Timer \(UserDefaults.standard.integer(forKey: "timerCount") + 1)"
+      "计时器 \(UserDefaults.standard.integer(forKey: "timerCount") + 1)"
     textField.isEditable = true
     textField.isSelectable = true
     textField.delegate = self
@@ -65,7 +65,7 @@ class NameInputPanel: NSObject {
 
     let cancelButton = NSButton(
       frame: NSRect(x: 0, y: 0, width: 80, height: 22))
-    cancelButton.title = "Cancel"
+    cancelButton.title = "取消"
     cancelButton.bezelStyle = .rounded
     cancelButton.target = self
     cancelButton.action = #selector(cancelNameInput)
@@ -73,7 +73,7 @@ class NameInputPanel: NSObject {
 
     let createButton = NSButton(
       frame: NSRect(x: 0, y: 0, width: 80, height: 22))
-    createButton.title = "Create"
+    createButton.title = "开始"
     createButton.bezelStyle = .rounded
     createButton.target = self
     createButton.action = #selector(confirmNameInput)

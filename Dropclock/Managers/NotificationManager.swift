@@ -29,12 +29,12 @@ class NotificationManager {
 
   func dispatchNotification(timerName: String? = nil) {
     let idenfier = UUID().uuidString
-    let title = timerName ?? "Timer up"
+    let title = timerName ?? "计时结束"
     let body: String
     if let timerName = timerName {
-      body = "Your timer \"\(timerName)\" has finished!"
+      body = "计时器「\(timerName)」已结束！"
     } else {
-      body = "Your timer has finished!"
+      body = "你的计时已经结束！"
     }
 
     let notificationCenter = UNUserNotificationCenter.current()

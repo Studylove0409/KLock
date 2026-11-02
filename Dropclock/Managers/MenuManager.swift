@@ -81,7 +81,7 @@ class MenuManager: NSObject {
 
     if delegate?.activeTimers.count ?? 0 > 0 {
       menu.addItem(
-        NSMenuItem(title: "Active Timers", action: nil, keyEquivalent: ""))
+        NSMenuItem(title: "进行中的计时器", action: nil, keyEquivalent: ""))
 
       if let activeTimers = delegate?.activeTimers {
         for (index, timerInfo) in activeTimers.enumerated() {
@@ -91,13 +91,13 @@ class MenuManager: NSObject {
           let formattedTime =
             delegate?.formatTimeInterval(remainingTime) ?? "00:00"
 
-          let displayName = timerInfo.name ?? "Timer \(index + 1)"
+          let displayName = timerInfo.name ?? "计时器 \(index + 1)"
           let menuItem = NSMenuItem()
           menuItem.representedObject = index
 
           let customView = HoverView(
             normalText: "\(displayName): \(formattedTime)",
-            hoverText: "Delete",
+            hoverText: "删除",
             frame: NSRect(x: 0, y: 0, width: 250, height: 22),
             index: index,
             target: self,
@@ -113,13 +113,13 @@ class MenuManager: NSObject {
     }
 
     let preferencesMenuItem = NSMenuItem(
-      title: "Preferences", action: #selector(callPreferences),
+      title: "偏好设置…", action: #selector(callPreferences),
       keyEquivalent: ",")
     preferencesMenuItem.target = self
     menu.addItem(preferencesMenuItem)
 
     let quitMenuItem = NSMenuItem(
-      title: "Quit Dropclock", action: #selector(callQuit), keyEquivalent: "q")
+      title: "退出 Dropclock", action: #selector(callQuit), keyEquivalent: "q")
     quitMenuItem.target = self
     menu.addItem(quitMenuItem)
 

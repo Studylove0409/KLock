@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
 	<key>NSRemindersUsageDescription</key>
-	<string>This app needs full access to reminders to add and delete them.</string>
+	<string>Dropclock 需要在「提醒事项」中创建和删除提醒，以便为你的计时器生成配套提醒。</string>
 </dict>
 </plist>
