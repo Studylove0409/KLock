@@ -21,8 +21,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     formatter.timeStyle = .short
     return formatter
   }()
-  var baseTime = Date()
-  
   internal var dragTimeInterval: TimeInterval = 0
   internal var dragStartLocation: CGPoint?
   internal var dragLineView: DragLineView?
@@ -30,19 +28,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   internal let MinuteThreshold: CGFloat = 130
   internal let ThirtySecondThreshold: CGFloat = 80
   internal let SecondThreshold: CGFloat = 50
-  
+
   private var statusIconUpdateTimer: Timer?
-  private var timer: Timer?
+  /// 所有计时器共用一个每秒 tick，避免 N 个计时器开 N 个 Timer。
+  private var tickTimer: Timer?
   /// 循环闹铃时已结束、但需要留在列表里等用户手动停止的计时器。
   private var finishedTimerIds: Set<UUID> = []
-  /// 屏幕中央的强提醒卡片
+  /// 屏幕中央的强提醒卡片；同一时刻只显示一个，其余排队。
   private var reminderAlertPanel: ReminderAlertPanel?
   private var reminderAlertTimerId: UUID?
-  private static let snoozeDuration: TimeInterval = 5 * 60
-  private var activeTimers:
+  private var pendingAlerts:
+  [(id: UUID, name: String?, duration: TimeInterval)] = []
+  internal var activeTimers:
   [(
     id: UUID, name: String?, startTime: Date, duration: TimeInterval,
-    timer: Timer, reminderId: String?
+    reminderId: String?
   )] = []
   internal var pendingTimerData: (startTime: Date, duration: TimeInterval)?
   
@@ -94,7 +94,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         name: timer.name,
         startTime: timer.startTime,
         duration: timer.duration,
-        reminderId: timer.reminderId
+        reminderId: timer.reminderId,
+        isFinished: finishedTimerIds.contains(timer.id)
       )
     }
     
@@ -116,11 +117,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       
       for savedTimer in savedTimers {
         let timerId = UUID(uuidString: savedTimer.id) ?? UUID()
-        let endTime = savedTimer.startTime.addingTimeInterval(
-          savedTimer.duration)
-        let remainingTime = endTime.timeIntervalSinceNow
-
-        let timerObj = makeTimerCheck(id: timerId, endAt: endTime)
 
         activeTimers.append(
           (
@@ -128,17 +124,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: savedTimer.name,
             startTime: savedTimer.startTime,
             duration: savedTimer.duration,
-            timer: timerObj,
             reminderId: savedTimer.reminderId
           ))
 
-        if remainingTime <= 0 {
-          print(
-            "Timer \(timerId) expired while app was not running. Triggering notification..."
-          )
+        // 已结束的条目（等用户手动停止循环闹铃）只恢复状态，
+        // 不再重新触发一次提醒，否则每次启动都会重复弹窗响铃。
+        if savedTimer.isFinished == true {
+          finishedTimerIds.insert(timerId)
         }
       }
-      
+
+      refreshTickTimer()
       updateStatusIcon()
     } catch {
       print("Failed to load timers: \(error)")
@@ -362,27 +358,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     statusIconUpdateTimer?.invalidate()
     if UserDefaults.standard.bool(forKey: "showNextTimerInMenuBar") {
       statusIconUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-        self?.baseTime = Date()
         self?.updateStatusIcon()
       }
     } else {
       statusIconUpdateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-        self?.baseTime = Date()
         self?.updateStatusIcon()
       }
     }
   }
   
-  /// 每秒检查是否到点。
-  /// 原来用一个整段时长的单次 Timer，系统睡眠或主线程卡顿后回调会迟触发，
-  /// 而界面时间是由 endTime 算的，两者会不一致，所以改成轮询判断。
-  private func makeTimerCheck(id: UUID, endAt: Date) -> Timer {
-    let interval = min(1.0, max(0.2, endAt.timeIntervalSinceNow))
-    return Timer.scheduledTimer(withTimeInterval: interval, repeats: true) {
-      [weak self] _ in
-      guard let self = self, Date() >= endAt else { return }
-      self.timerFinished(id: id)
+  /// 所有计时器共用一个每秒 tick；没有正在跑的计时器时自动停掉，避免空转。
+  private func refreshTickTimer() {
+    let hasRunning = activeTimers.contains {
+      !finishedTimerIds.contains($0.id)
     }
+    if hasRunning {
+      guard tickTimer == nil else { return }
+      tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) {
+        [weak self] _ in
+        self?.checkExpiredTimers()
+      }
+    } else {
+      tickTimer?.invalidate()
+      tickTimer = nil
+    }
+  }
+
+  private func checkExpiredTimers() {
+    let now = Date()
+    let expired = activeTimers.filter { timer in
+      !finishedTimerIds.contains(timer.id)
+        && now >= timer.startTime.addingTimeInterval(timer.duration)
+    }
+    for timer in expired {
+      timerFinished(id: timer.id)
+    }
+    refreshTickTimer()
   }
 
   internal func startOneTimeTimer(name: String?) {
@@ -395,8 +406,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       // 以真正开始计时的时刻为准。开启自定义命名时，输入名字的耗时
       // 不应该从时长里被扣掉（否则 1 分钟会显示成 00:57）。
       let startTime = Date()
-      let endAt = startTime.addingTimeInterval(timerData.duration)
-      let timerObj = makeTimerCheck(id: timerId, endAt: endAt)
       
       if UserDefaults.standard.bool(forKey: "allowReminders") {
         if !UserDefaults.standard.bool(forKey: "ignoreShortTimers")
@@ -432,10 +441,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           name: name,
           startTime: startTime,
           duration: timerData.duration,
-          timer: timerObj,
           reminderId: reminderId
         ))
       
+      refreshTickTimer()
       updateStatusIcon()
       updateMenu()
       saveTimers()
@@ -487,27 +496,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func timerFinished(id: UUID) {
-    if let index = activeTimers.firstIndex(where: { $0.id == id }) {
-      let timer = activeTimers[index]
-      let timerName = timer.name
-      timer.timer.invalidate()
-      NotificationManager.shared.dispatchNotification(timerName: timerName)
-      let defaults = UserDefaults.standard
-      let shouldLoopAlarm = defaults.bool(forKey: "playAlarmSound")
-        && defaults.bool(forKey: "loopAlarmUntilStopped")
-      SoundManager.shared.playSelectedAlarmIfEnabled(loop: shouldLoopAlarm)
-
-      if shouldLoopAlarm {
-        // 循环闹铃时保留在列表里并标记为已结束，用户点「删除」即可停止。
-        finishedTimerIds.insert(id)
-      } else {
-        activeTimers.remove(at: index)
-      }
-
-      showReminderAlert(
-        timerId: id, name: timerName, duration: timer.duration)
+    guard let index = activeTimers.firstIndex(where: { $0.id == id }) else {
+      return
     }
 
+    let timer = activeTimers[index]
+    let timerName = timer.name
+    NotificationManager.shared.dispatchNotification(timerName: timerName)
+
+    let defaults = UserDefaults.standard
+    let shouldLoopAlarm = defaults.bool(forKey: "playAlarmSound")
+      && defaults.bool(forKey: "loopAlarmUntilStopped")
+    SoundManager.shared.playSelectedAlarmIfEnabled(loop: shouldLoopAlarm)
+
+    HistoryStore.shared.add(
+      name: timerName ?? "计时器",
+      duration: timer.duration,
+      finishedAt: Date())
+
+    if shouldLoopAlarm {
+      // 循环闹铃时保留在列表里并标记为已结束，用户点「删除」即可停止。
+      finishedTimerIds.insert(id)
+    } else {
+      activeTimers.remove(at: index)
+    }
+
+    enqueueReminderAlert(
+      timerId: id, name: timerName, duration: timer.duration)
+
+    refreshTickTimer()
     updateStatusIcon()
     updateMenu()
     saveTimers()
@@ -515,49 +532,65 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   
   // MARK: - 结束提醒
 
-  private func showReminderAlert(
+  /// 多个计时器同时结束时排队逐个展示，避免后一个卡片顶掉前一个。
+  private func enqueueReminderAlert(
     timerId: UUID, name: String?, duration: TimeInterval
   ) {
-    let minutes = Int(duration / 60)
+    pendingAlerts.append((id: timerId, name: name, duration: duration))
+    if reminderAlertPanel == nil {
+      showNextReminderAlert()
+    }
+  }
+
+  private func showNextReminderAlert() {
+    guard let next = pendingAlerts.first else { return }
+    pendingAlerts.removeFirst()
+
+    let minutes = Int(next.duration / 60)
     let detail =
-      duration < 60
-      ? "\(Int(duration)) 秒的计时已结束"
+      next.duration < 60
+      ? "\(Int(next.duration)) 秒的计时已结束"
       : "\(minutes) 分钟的计时已结束"
 
     let panel = ReminderAlertPanel()
     reminderAlertPanel = panel
-    reminderAlertTimerId = timerId
+    reminderAlertTimerId = next.id
 
     panel.show(
-      timerName: name ?? "计时器",
+      timerName: next.name ?? "计时器",
       detail: detail,
-      snoozeTitle: "稍后提醒 5 分钟",
       onClose: { [weak self] in
-        self?.dismissReminderAlert(timerId: timerId)
+        self?.dismissReminderAlert(
+          timerId: next.id, name: next.name, snoozeMinutes: nil)
       },
-      onSnooze: { [weak self] in
-        self?.snoozeReminder(timerId: timerId, name: name)
+      onSnooze: { [weak self] snoozeMinutes in
+        self?.dismissReminderAlert(
+          timerId: next.id, name: next.name, snoozeMinutes: snoozeMinutes)
       })
   }
 
-  private func dismissReminderAlert(timerId: UUID) {
+  private func dismissReminderAlert(
+    timerId: UUID, name: String?, snoozeMinutes: Int?
+  ) {
     reminderAlertPanel = nil
     reminderAlertTimerId = nil
     SoundManager.shared.stopActiveSound()
     removeTimerEntry(id: timerId)
-  }
 
-  private func snoozeReminder(timerId: UUID, name: String?) {
-    dismissReminderAlert(timerId: timerId)
-    pendingTimerData = (Date(), Self.snoozeDuration)
-    startOneTimeTimer(name: name)
+    if let snoozeMinutes = snoozeMinutes {
+      pendingTimerData = (
+        Date(), TimeInterval(snoozeMinutes) * 60
+      )
+      startOneTimeTimer(name: name)
+    }
+
+    showNextReminderAlert()
   }
 
   /// 从列表里彻底移除某个计时器（含已结束仍残留的条目）。
   private func removeTimerEntry(id: UUID) {
     guard let index = activeTimers.firstIndex(where: { $0.id == id })
     else { return }
-    activeTimers[index].timer.invalidate()
     activeTimers.remove(at: index)
     finishedTimerIds.remove(id)
     saveTimers()
@@ -589,15 +622,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       }
     }
     
-    timerToRemove.timer.invalidate()
     finishedTimerIds.remove(timerId)
     activeTimers.remove(at: timerIndex)
+    refreshTickTimer()
 
-    // 如果屏幕上的提醒卡片正属于这个计时器，一并关掉。
+    // 如果屏幕上的提醒卡片正属于这个计时器，一并关掉并接着显示下一条。
     if reminderAlertTimerId == timerId {
       reminderAlertPanel?.close()
       reminderAlertPanel = nil
       reminderAlertTimerId = nil
+      showNextReminderAlert()
     }
 
     SoundManager.shared.stopActiveSound()
@@ -613,6 +647,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   
   @objc func preferences() {
     PreferencesWindowController.shared.showWindow()
+  }
+
+  @objc func showHistory() {
+    HistoryWindowController.shared.showWindow()
   }
   
   @objc func quit() {
@@ -671,6 +709,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       menu.addItem(NSMenuItem.separator())
     }
     
+    menu.addItem(
+      NSMenuItem(
+        title: "历史记录…", action: #selector(showHistory), keyEquivalent: "h"))
     menu.addItem(
       NSMenuItem(
         title: "偏好设置…", action: #selector(preferences), keyEquivalent: ","

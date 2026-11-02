@@ -5,7 +5,7 @@ import AppKit
 class ReminderAlertPanel {
   private var panel: NSPanel?
   private var onClose: (() -> Void)?
-  private var onSnooze: (() -> Void)?
+  private var onSnooze: ((Int) -> Void)?
 
   deinit {
     panel?.orderOut(nil)
@@ -15,9 +15,8 @@ class ReminderAlertPanel {
   func show(
     timerName: String,
     detail: String,
-    snoozeTitle: String,
     onClose: @escaping () -> Void,
-    onSnooze: @escaping () -> Void
+    onSnooze: @escaping (Int) -> Void
   ) {
     cleanup()
     self.onClose = onClose
@@ -74,14 +73,20 @@ class ReminderAlertPanel {
     closeButton.keyEquivalent = "\r"
     closeButton.controlSize = .large
 
-    let snoozeButton = NSButton(
-      title: snoozeTitle, target: self, action: #selector(handleSnooze))
-    snoozeButton.bezelStyle = .rounded
-    snoozeButton.controlSize = .large
+    let snooze5Button = NSButton(
+      title: "稍后 5 分钟", target: self, action: #selector(handleSnooze5))
+    snooze5Button.bezelStyle = .rounded
+    snooze5Button.controlSize = .large
 
-    let buttonStack = NSStackView(views: [closeButton, snoozeButton])
+    let snooze15Button = NSButton(
+      title: "稍后 15 分钟", target: self, action: #selector(handleSnooze15))
+    snooze15Button.bezelStyle = .rounded
+    snooze15Button.controlSize = .large
+
+    let buttonStack = NSStackView(
+      views: [closeButton, snooze5Button, snooze15Button])
     buttonStack.orientation = .horizontal
-    buttonStack.spacing = 12
+    buttonStack.spacing = 10
     buttonStack.distribution = .fillEqually
 
     let stack = NSStackView(views: [caption, title, subtitle, buttonStack])
@@ -131,11 +136,19 @@ class ReminderAlertPanel {
     _ = alive
   }
 
-  @objc private func handleSnooze() {
+  @objc private func handleSnooze5() {
+    handleSnooze(minutes: 5)
+  }
+
+  @objc private func handleSnooze15() {
+    handleSnooze(minutes: 15)
+  }
+
+  private func handleSnooze(minutes: Int) {
     let alive = self
     let action = alive.onSnooze
     alive.cleanup()
-    action?()
+    action?(minutes)
     _ = alive
   }
 

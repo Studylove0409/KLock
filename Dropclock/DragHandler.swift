@@ -16,7 +16,6 @@ extension AppDelegate {
 
     switch sender.state {
     case .began:
-      baseTime = Date()
       dragStartLocation = translation
       if UserDefaults.standard.bool(forKey: "showDragIndicator") {
         createDragLine(sender: sender)
