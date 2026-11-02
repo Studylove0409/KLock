@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import UserNotifications
 
@@ -61,5 +62,27 @@ class NotificationManager {
         completion(settings)
       }
     }
+  }
+
+  /// 当前是否允许发送通知（未授权时 app 内提醒卡片仍然可见）。
+  func isAuthorized(_ completion: @escaping (Bool) -> Void) {
+    getNotificationSettings { settings in
+      switch settings.authorizationStatus {
+      case .authorized, .provisional, .ephemeral:
+        completion(true)
+      default:
+        completion(false)
+      }
+    }
+  }
+
+  /// 跳转到「系统设置 › 通知」。
+  func openSystemNotificationSettings() {
+    guard
+      let url = URL(
+        string:
+          "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+    else { return }
+    NSWorkspace.shared.open(url)
   }
 }

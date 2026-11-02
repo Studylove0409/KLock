@@ -35,6 +35,14 @@ struct PreferencesView: View {
   @State private var hoverStates: [PreferenceTab: Bool] = [:]
   @State private var isShowingSoundImporter: Bool = false
 
+  private var notificationStatusText: String {
+    switch viewModel.notificationsAuthorized {
+    case .none: return "检测中…"
+    case .some(true): return "已允许"
+    case .some(false): return "未允许"
+    }
+  }
+
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 0) {
@@ -213,6 +221,23 @@ struct PreferencesView: View {
               .onChangeCompat(viewModel.customMenuBarSymbol, publisher: viewModel.$customMenuBarSymbol) { _ in
                 viewModel.schedulePreferencesSave()
               }
+          }
+        }
+        SettingsRow(
+          title: "系统通知",
+          helpText:
+            "未授权时，计时结束只会弹出应用内的提醒卡片，不会进入通知中心。"
+        ) {
+          HStack(spacing: 8) {
+            Text(notificationStatusText)
+              .font(.system(size: 12))
+              .foregroundColor(.secondary)
+            if viewModel.notificationsAuthorized == false {
+              Button("去开启") {
+                viewModel.openNotificationSettings()
+              }
+              .font(.system(size: 12))
+            }
           }
         }
       }

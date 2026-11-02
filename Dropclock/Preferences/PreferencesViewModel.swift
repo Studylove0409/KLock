@@ -71,6 +71,9 @@ class PreferencesViewModel: ObservableObject {
   /// 文本输入的延迟保存任务
   private var pendingTextSave: AnyCancellable?
 
+  /// nil = 还在检测；true/false = 系统通知是否已授权
+  @Published var notificationsAuthorized: Bool?
+
   private struct Keys {
     static let allowReminders = "allowReminders"
     static let deleteReminders = "deleteReminders"
@@ -101,6 +104,17 @@ class PreferencesViewModel: ObservableObject {
     loadPreferences()
     startAtLogin = SMAppService.mainApp.status == .enabled
     loadReminderData()
+    refreshNotificationStatus()
+  }
+
+  func refreshNotificationStatus() {
+    NotificationManager.shared.isAuthorized { [weak self] authorized in
+      self?.notificationsAuthorized = authorized
+    }
+  }
+
+  func openNotificationSettings() {
+    NotificationManager.shared.openSystemNotificationSettings()
   }
 
   private func loadReminderData() {
