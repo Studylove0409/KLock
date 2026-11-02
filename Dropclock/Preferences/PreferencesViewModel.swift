@@ -240,8 +240,7 @@ class PreferencesViewModel: ObservableObject {
     switch status {
     case .notDetermined:
       let granted = await RemindersManager.shared.requestAccess()
-      if granted {
-      } else {
+      if !granted {
         print("Access denied. Please enable it in System Settings.")
       }
 

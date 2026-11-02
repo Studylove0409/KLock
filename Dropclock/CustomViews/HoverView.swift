@@ -102,15 +102,4 @@ class HoverView: NSView {
     super.viewDidMoveToSuperview()
     updateTrackingAreas()
   }
-
-  override func mouseMoved(with event: NSEvent) {
-    let point = convert(event.locationInWindow, from: nil)
-    if bounds.contains(point) && textField.stringValue != hoverText {
-      textField.textColor = .systemRed
-      textField.stringValue = hoverText
-    } else if !bounds.contains(point) && textField.stringValue != normalText {
-      textField.textColor = .labelColor
-      textField.stringValue = normalText
-    }
-  }
 }
