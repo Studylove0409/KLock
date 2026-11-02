@@ -35,6 +35,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   private var timer: Timer?
   /// 循环闹铃时已结束、但需要留在列表里等用户手动停止的计时器。
   private var finishedTimerIds: Set<UUID> = []
+  /// 屏幕中央的强提醒卡片
+  private var reminderAlertPanel: ReminderAlertPanel?
+  private var reminderAlertTimerId: UUID?
+  private static let snoozeDuration: TimeInterval = 5 * 60
   private var activeTimers:
   [(
     id: UUID, name: String?, startTime: Date, duration: TimeInterval,
@@ -499,6 +503,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       } else {
         activeTimers.remove(at: index)
       }
+
+      showReminderAlert(
+        timerId: id, name: timerName, duration: timer.duration)
     }
 
     updateStatusIcon()
@@ -506,6 +513,58 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     saveTimers()
   }
   
+  // MARK: - 结束提醒
+
+  private func showReminderAlert(
+    timerId: UUID, name: String?, duration: TimeInterval
+  ) {
+    let minutes = Int(duration / 60)
+    let detail =
+      duration < 60
+      ? "\(Int(duration)) 秒的计时已结束"
+      : "\(minutes) 分钟的计时已结束"
+
+    let panel = ReminderAlertPanel()
+    reminderAlertPanel = panel
+    reminderAlertTimerId = timerId
+
+    panel.show(
+      timerName: name ?? "计时器",
+      detail: detail,
+      snoozeTitle: "稍后提醒 5 分钟",
+      onClose: { [weak self] in
+        self?.dismissReminderAlert(timerId: timerId)
+      },
+      onSnooze: { [weak self] in
+        self?.snoozeReminder(timerId: timerId, name: name)
+      })
+  }
+
+  private func dismissReminderAlert(timerId: UUID) {
+    reminderAlertPanel = nil
+    reminderAlertTimerId = nil
+    SoundManager.shared.stopActiveSound()
+    removeTimerEntry(id: timerId)
+  }
+
+  private func snoozeReminder(timerId: UUID, name: String?) {
+    dismissReminderAlert(timerId: timerId)
+    pendingTimerData = (Date(), Self.snoozeDuration)
+    startOneTimeTimer(name: name)
+  }
+
+  /// 从列表里彻底移除某个计时器（含已结束仍残留的条目）。
+  private func removeTimerEntry(id: UUID) {
+    guard let index = activeTimers.firstIndex(where: { $0.id == id })
+    else { return }
+    activeTimers[index].timer.invalidate()
+    activeTimers.remove(at: index)
+    finishedTimerIds.remove(id)
+    saveTimers()
+    updateStatusIcon()
+    updateMenu()
+  }
+
   @objc func cancelTimer(sender: NSMenuItem) {
     // 按 UUID 定位，避免菜单每秒重建期间计时器列表变动导致删错行。
     guard let timerId = sender.representedObject as? UUID,
@@ -533,6 +592,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     timerToRemove.timer.invalidate()
     finishedTimerIds.remove(timerId)
     activeTimers.remove(at: timerIndex)
+
+    // 如果屏幕上的提醒卡片正属于这个计时器，一并关掉。
+    if reminderAlertTimerId == timerId {
+      reminderAlertPanel?.close()
+      reminderAlertPanel = nil
+      reminderAlertTimerId = nil
+    }
+
     SoundManager.shared.stopActiveSound()
     saveTimers()
     updateStatusIcon()
