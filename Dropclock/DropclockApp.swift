@@ -153,8 +153,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
   
   @objc private func menuWillClose(_ notification: Notification) {
-    guard let menu = notification.object as? NSMenu, menu == statusItem?.menu
-    else { return }
+    // 不做身份比对：菜单在打开期间可能被替换过，用旧对象比会漏掉关闭事件，
+    // 导致 isMenuOpen 一直为 true。
     isMenuOpen = false
     stopMenuRefreshTimer()
   }
@@ -163,11 +163,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   
   private func startMenuRefreshTimer() {
     stopMenuRefreshTimer()
-    menuRefreshTimer = Timer.scheduledTimer(
-      withTimeInterval: 1.0, repeats: true
-    ) { [weak self] _ in
+    // 必须加到 common 模式：菜单打开时 run loop 处于 eventTracking 模式，
+    // 默认模式的定时器完全不会触发，行内数字就会停在打开那一刻。
+    let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
       guard let self = self, self.isMenuOpen else { return }
-      self.updateMenu()
+      self.refreshOpenMenuRows()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    menuRefreshTimer = timer
+  }
+
+  /// 菜单打开时只刷新每一行的文字，不重建菜单。
+  private func refreshOpenMenuRows() {
+    let ids = Set(activeTimers.map { $0.id })
+    guard ids == Set(rowViews.keys) else {
+      // 条目增减了，重建一次；屏幕上这份要等下次打开才会变
+      updateMenu()
+      return
+    }
+
+    for (timerId, view) in rowViews {
+      let row = menuRowText(for: timerId)
+      view.setContent(text: row.text, isPaused: row.isPaused)
     }
   }
   
@@ -735,6 +752,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
   
   private var lastMenuSignature: String?
+  /// 当前菜单里每一行对应的视图，用于菜单打开期间原地刷新文字
+  private var rowViews: [UUID: HoverView] = [:]
 
   /// 菜单内容指纹：只有内容真的变了才重建，避免每秒重建带来的闪烁和开销。
   private func menuSignature() -> String {
@@ -754,6 +773,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     lastMenuSignature = signature
 
     let menu = NSMenu()
+    rowViews.removeAll()
     
     if activeTimers.count > 0 {
       menu.addItem(
@@ -780,6 +800,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           }
         )
         menuItem.view = customView
+        rowViews[timerId] = customView
 
         menu.addItem(menuItem)
       }

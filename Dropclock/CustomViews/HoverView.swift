@@ -262,13 +262,21 @@ final class HoverView: NSView {
 
   // MARK: - 原地更新
 
-  private func apply(text: String, isPaused: Bool) {
+  /// 供外部每秒刷新文字用：只改内容，不播强调动画。
+  func setContent(text: String, isPaused: Bool, animated: Bool = false) {
     let changed = isPaused != self.isPaused
     self.isPaused = isPaused
     textField.stringValue = text
     // 用颜色而不是追加文字来表示暂停：文字长度一变，行宽就会变，菜单会左右跳
     textField.textColor = isPaused ? .secondaryLabelColor : .labelColor
-    refreshIconContents(animated: changed)
+    if changed {
+      refreshIconContents(animated: animated)
+    }
+  }
+
+  private func apply(text: String, isPaused: Bool) {
+    let changed = isPaused != self.isPaused
+    setContent(text: text, isPaused: isPaused, animated: changed)
 
     // 文字跟着呼吸一下，避免硬切
     textField.alphaValue = 0.35
