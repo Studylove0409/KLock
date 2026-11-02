@@ -401,6 +401,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       pausedRemaining: pausedRemaining, now: Date())
   }
 
+  /// 菜单里某一行的显示文本 + 是否暂停，供首次构建和原地更新共用。
+  private func menuRowText(for timerId: UUID) -> (text: String, isPaused: Bool) {
+    guard let index = activeTimers.firstIndex(where: { $0.id == timerId })
+    else { return ("", false) }
+
+    let timer = activeTimers[index]
+    let isFinished = finishedTimerIds.contains(timer.id)
+    let isPaused = timer.pausedRemaining != nil
+    let remaining = remainingSeconds(
+      startTime: timer.startTime, duration: timer.duration,
+      pausedRemaining: timer.pausedRemaining)
+
+    let formatted: String
+    if isFinished {
+      formatted = "已结束"
+    } else if isPaused {
+      formatted = "\(TimerTextFormatter.duration(remaining)) · 暂停"
+    } else {
+      formatted = TimerTextFormatter.duration(remaining)
+    }
+
+    let name = timer.name ?? "计时器 \(index + 1)"
+    return ("\(name): \(formatted)", isPaused)
+  }
+
   private func checkExpiredTimers() {
     let now = Date()
     let expired = activeTimers.filter { timer in
@@ -695,7 +720,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     refreshTickTimer()
     saveTimers()
     updateStatusIcon()
-    updateMenu()
+    // 菜单开着的时候不重建，交给原地更新和打开期间的每秒刷新，
+    // 否则替换 statusItem.menu 会让菜单「啪」地消失。
+    if !isMenuOpen {
+      updateMenu()
+    }
   }
 
   @objc func showHistory() {
@@ -731,31 +760,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       menu.addItem(
         NSMenuItem(title: "进行中的计时器", action: nil, keyEquivalent: ""))
       
-      for (index, timerInfo) in activeTimers.enumerated() {
-        let isFinished = finishedTimerIds.contains(timerInfo.id)
-        let isPaused = timerInfo.pausedRemaining != nil
-        let remaining = remainingSeconds(
-          startTime: timerInfo.startTime, duration: timerInfo.duration,
-          pausedRemaining: timerInfo.pausedRemaining)
-        let formattedTime: String
-        if isFinished {
-          formattedTime = "已结束"
-        } else if isPaused {
-          formattedTime = "\(TimerTextFormatter.duration(remaining)) · 暂停"
-        } else {
-          formattedTime = TimerTextFormatter.duration(remaining)
-        }
-
-        let displayName = timerInfo.name ?? "计时器 \(index + 1)"
+      for timerInfo in activeTimers {
+        let row = menuRowText(for: timerInfo.id)
         let timerId = timerInfo.id
         let menuItem = NSMenuItem()
 
         let customView = HoverView(
-          text: "\(displayName): \(formattedTime)",
-          isPaused: isPaused,
+          text: row.text,
+          isPaused: row.isPaused,
           frame: NSRect(x: 0, y: 0, width: 270, height: 24),
           onTogglePause: { [weak self] in
-            self?.togglePause(id: timerId)
+            guard let self = self else { return ("", false) }
+            self.togglePause(id: timerId)
+            return self.menuRowText(for: timerId)
           },
           onDelete: { [weak self] in
             self?.deleteTimer(id: timerId)

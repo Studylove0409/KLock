@@ -11,11 +11,12 @@ final class HoverView: NSView {
   }
 
   private let textField = NSTextField()
-  private let isPaused: Bool
-  private let onTogglePause: () -> Void
+  private var isPaused: Bool
+  /// 返回切换后的 (行文本, 是否暂停)，用于原地更新这一行
+  private let onTogglePause: () -> (text: String, isPaused: Bool)
   private let onDelete: () -> Void
 
-  private let pauseImage: NSImage?
+  private var pauseImage: NSImage?
   private let deleteImage: NSImage?
 
   private var pauseRect: NSRect = .zero
@@ -36,17 +37,15 @@ final class HoverView: NSView {
     text: String,
     isPaused: Bool,
     frame: NSRect,
-    onTogglePause: @escaping () -> Void,
+    onTogglePause: @escaping () -> (text: String, isPaused: Bool),
     onDelete: @escaping () -> Void
   ) {
     self.isPaused = isPaused
     self.onTogglePause = onTogglePause
     self.onDelete = onDelete
-    self.pauseImage = NSImage(
-      systemSymbolName: isPaused ? "play.fill" : "pause.fill",
-      accessibilityDescription: isPaused ? "继续" : "暂停")
-    self.deleteImage = NSImage(
-      systemSymbolName: "trash", accessibilityDescription: "删除")
+    self.pauseImage = HoverView.symbol(
+      isPaused ? "play.fill" : "pause.fill", isPaused ? "继续" : "暂停")
+    self.deleteImage = HoverView.symbol("trash", "删除")
     super.init(frame: frame)
 
     textField.isEditable = false
@@ -72,6 +71,10 @@ final class HoverView: NSView {
     fatalError("init(coder:) has not been implemented")
   }
 
+  private static func symbol(_ name: String, _ description: String) -> NSImage? {
+    NSImage(systemSymbolName: name, accessibilityDescription: description)
+  }
+
   // MARK: - 布局与绘制
 
   override func layout() {
@@ -90,19 +93,19 @@ final class HoverView: NSView {
     guard isHovering else { return }
 
     drawIcon(
-      pauseImage, in: pauseRect, hovered: hoveredIcon == .pause,
-      tint: .secondaryLabelColor)
+      pauseImage, in: pauseRect, highlighted: hoveredIcon == .pause,
+      tint: hoveredIcon == .pause ? .labelColor : .secondaryLabelColor)
     drawIcon(
-      deleteImage, in: deleteRect, hovered: hoveredIcon == .delete,
-      tint: .secondaryLabelColor)
+      deleteImage, in: deleteRect, highlighted: hoveredIcon == .delete,
+      tint: hoveredIcon == .delete ? .labelColor : .secondaryLabelColor)
   }
 
   private func drawIcon(
-    _ image: NSImage?, in rect: NSRect, hovered: Bool, tint: NSColor
+    _ image: NSImage?, in rect: NSRect, highlighted: Bool, tint: NSColor
   ) {
     guard let image = image else { return }
 
-    if hovered {
+    if highlighted {
       let background = NSBezierPath(
         roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 5, yRadius: 5)
       NSColor.labelColor.withAlphaComponent(0.1).setFill()
@@ -164,14 +167,35 @@ final class HoverView: NSView {
 
   override func mouseDown(with event: NSEvent) {
     let point = convert(event.locationInWindow, from: nil)
+
     if deleteRect.contains(point) {
+      // 删除会让整行消失，直接关菜单，行不见了本身就是反馈
       let action = onDelete
       enclosingMenuItem?.menu?.cancelTracking()
       action()
     } else if pauseRect.contains(point) {
-      let action = onTogglePause
-      enclosingMenuItem?.menu?.cancelTracking()
-      action()
+      // 立即切换状态，再回放一次淡入作为反馈：
+      // 不依赖延时回调，菜单跟踪期间也一定能生效
+      let result = onTogglePause()
+      apply(text: result.text, isPaused: result.isPaused)
+    }
+  }
+
+  // MARK: - 原地更新
+
+  private func apply(text: String, isPaused: Bool) {
+    self.isPaused = isPaused
+    pauseImage = HoverView.symbol(
+      isPaused ? "play.fill" : "pause.fill", isPaused ? "继续" : "暂停")
+    textField.stringValue = text
+    needsDisplay = true
+
+    // 轻微的一次呼吸，让图标和文字的变化被看见
+    alphaValue = 0.55
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0.18
+      context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+      animator().alphaValue = 1
     }
   }
 }
