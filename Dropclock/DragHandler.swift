@@ -132,28 +132,42 @@ extension AppDelegate {
       let screen = buttonWindow.screen ?? NSScreen.main
     else { return }
 
-    let buttonFrame = button.window!.frame
+    let buttonFrame = buttonWindow.frame
     let startPoint = NSPoint(x: buttonFrame.midX, y: buttonFrame.midY)
     let endPoint = NSEvent.mouseLocation
 
-    // Create a new window
-    dragLineWindow = NSWindow(
-      contentRect: screen.frame, styleMask: .borderless, backing: .buffered,
-      defer: false)
-    dragLineWindow?.backgroundColor = .clear
+    // 复用同一个覆盖窗口：既避免每次拖拽新建窗口造成泄漏，
+    // 也不在拖拽结束时 close()，规避关闭与释放时序导致的崩溃。
+    let window: NSWindow
+    if let existing = dragLineWindow {
+      window = existing
+      if window.frame != screen.frame {
+        window.setFrame(screen.frame, display: false)
+      }
+    } else {
+      window = NSWindow(
+        contentRect: screen.frame, styleMask: .borderless, backing: .buffered,
+        defer: false)
+      window.isReleasedWhenClosed = false
+      window.backgroundColor = .clear
+      window.ignoresMouseEvents = true
+      window.level = .statusBar
+      dragLineWindow = window
+    }
 
-    dragLineWindow?.ignoresMouseEvents = true
-    dragLineWindow?.makeKeyAndOrderFront(nil)
+    dragLineView?.removeFromSuperview()
 
-    dragLineView = DragLineView(frame: screen.frame)
-    dragLineView?.startPoint = startPoint
-    dragLineView?.endPoint = endPoint
-    dragLineWindow?.level = .statusBar
-    dragLineView?.wantsLayer = true
-    dragLineView?.layer?.zPosition = CGFloat(Float.greatestFiniteMagnitude)
+    let lineView = DragLineView(frame: screen.frame)
+    lineView.startPoint = startPoint
+    lineView.endPoint = endPoint
+    lineView.wantsLayer = true
+    lineView.layer?.zPosition = CGFloat(Float.greatestFiniteMagnitude)
 
-    dragLineWindow?.contentView?.addSubview(dragLineView!)
-    dragLineView?.update(start: startPoint, end: endPoint)
+    window.contentView?.addSubview(lineView)
+    window.makeKeyAndOrderFront(nil)
+
+    dragLineView = lineView
+    lineView.update(start: startPoint, end: endPoint)
   }
 
   private func updateDragLine(sender: NSPanGestureRecognizer) {
@@ -171,9 +185,7 @@ extension AppDelegate {
   private func removeDragLine() {
     dragLineView?.removeFromSuperview()
     dragLineView = nil
-    // 全屏覆盖窗口必须显式关闭，否则每拖一次都会泄漏一个窗口。
+    // 只隐藏窗口，留待下次拖拽复用；这里不 close，避免释放时序问题。
     dragLineWindow?.orderOut(nil)
-    dragLineWindow?.close()
-    dragLineWindow = nil
   }
 }

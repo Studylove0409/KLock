@@ -23,6 +23,8 @@ class NameInputPanel: NSObject {
     panel.titlebarAppearsTransparent = true
     panel.titleVisibility = .hidden
     panel.isMovableByWindowBackground = true
+    // 同上：避免 close() 与 ARC 释放叠加导致崩溃。
+    panel.isReleasedWhenClosed = false
 
     let blurView = NSVisualEffectView(frame: panel.contentView!.bounds)
     blurView.material = .hudWindow

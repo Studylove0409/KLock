@@ -165,7 +165,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     guard let menu = notification.object as? NSMenu, menu == statusItem?.menu
     else { return }
     isMenuOpen = true
-    updateMenu()
     startMenuRefreshTimer()
   }
   

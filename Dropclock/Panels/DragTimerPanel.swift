@@ -31,6 +31,8 @@ class DragTimerPanel {
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     panel.isMovable = false
     panel.isOpaque = false
+    // close() 时不让 AppKit 自行释放，否则与 ARC 的强引用叠加会造成过度释放。
+    panel.isReleasedWhenClosed = false
     panel.backgroundColor = .clear
     panel.hasShadow = true
 
