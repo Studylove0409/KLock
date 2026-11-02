@@ -128,7 +128,8 @@ extension AppDelegate {
 
   private func createDragLine(sender: NSPanGestureRecognizer) {
     guard let button = sender.view as? NSStatusBarButton,
-      let screen = NSScreen.main
+      let buttonWindow = button.window,
+      let screen = buttonWindow.screen ?? NSScreen.main
     else { return }
 
     let buttonFrame = button.window!.frame
@@ -156,7 +157,7 @@ extension AppDelegate {
   }
 
   private func updateDragLine(sender: NSPanGestureRecognizer) {
-    guard let lineView = dragLineView, NSScreen.main != nil,
+    guard let lineView = dragLineView,
       let button = sender.view as? NSStatusBarButton
     else { return }
 
@@ -168,9 +169,11 @@ extension AppDelegate {
   }
 
   private func removeDragLine() {
-    DispatchQueue.main.async {
-      self.dragLineView?.removeFromSuperview()
-      self.dragLineView = nil
-    }
+    dragLineView?.removeFromSuperview()
+    dragLineView = nil
+    // 全屏覆盖窗口必须显式关闭，否则每拖一次都会泄漏一个窗口。
+    dragLineWindow?.orderOut(nil)
+    dragLineWindow?.close()
+    dragLineWindow = nil
   }
 }
