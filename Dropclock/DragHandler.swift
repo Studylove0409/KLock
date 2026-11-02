@@ -67,7 +67,9 @@ extension AppDelegate {
       }
 
       dragTimeInterval = calculatedInterval
-      endTime = baseTime.addingTimeInterval(dragTimeInterval)
+      // 用「此刻 + 时长」而不是「按下时刻 + 时长」，
+      // 因为计时器是在松手后才真正开始的，这样预览的结束时间才和实际一致。
+      endTime = Date().addingTimeInterval(dragTimeInterval)
 
       let displayText: String
       if calculatedInterval < 60 {

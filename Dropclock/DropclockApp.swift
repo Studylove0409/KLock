@@ -388,7 +388,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       let timerId = UUID()
       let reminderId: String? = nil
 
-      let endAt = timerData.startTime.addingTimeInterval(timerData.duration)
+      // 以真正开始计时的时刻为准。开启自定义命名时，输入名字的耗时
+      // 不应该从时长里被扣掉（否则 1 分钟会显示成 00:57）。
+      let startTime = Date()
+      let endAt = startTime.addingTimeInterval(timerData.duration)
       let timerObj = makeTimerCheck(id: timerId, endAt: endAt)
       
       if UserDefaults.standard.bool(forKey: "allowReminders") {
@@ -423,7 +426,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         (
           id: timerId,
           name: name,
-          startTime: timerData.startTime,
+          startTime: startTime,
           duration: timerData.duration,
           timer: timerObj,
           reminderId: reminderId
