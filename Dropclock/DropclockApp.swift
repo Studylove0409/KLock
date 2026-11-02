@@ -76,6 +76,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       }
     }
 
+    // 开发辅助：设 DROPCLOCK_SMOKE=<秒> 直接起一个计时器，用于端到端冒烟
+    if let raw = ProcessInfo.processInfo.environment["DROPCLOCK_SMOKE"],
+      let seconds = Double(raw), seconds > 0
+    {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        self?.pendingTimerData = (Date(), seconds)
+        self?.startOneTimeTimer(name: "自检")
+      }
+    }
+
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(menuWillOpen(_:)),
