@@ -3,7 +3,9 @@ import EventKit
 import SwiftUI
 import UserNotifications
 
+#if !DROPCLOCK_TESTING
 @main
+#endif
 struct MenuBarApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
   
@@ -16,6 +18,11 @@ struct MenuBarApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
   var statusItem: NSStatusItem?
+  internal var remindersManager: ReminderManaging = RemindersManager.shared
+  internal var soundManager: SoundManager = .shared
+  internal var notifyTimerFinished: (String?) -> Void = {
+    NotificationManager.shared.dispatchNotification(timerName: $0)
+  }
   let formatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.timeStyle = .short
@@ -34,13 +41,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusIconInterval: TimeInterval = 0
   /// 所有计时器共用一个每秒 tick，避免 N 个计时器开 N 个 Timer。
   private var tickTimer: Timer?
-  /// 循环闹铃时已结束、但需要留在列表里等用户手动停止的计时器。
+  /// 已结束、等待提醒卡操作或手动停止循环闹铃的计时器。
   private var finishedTimerIds: Set<UUID> = []
+  /// 非循环提醒只在卡片显示或排队期间保留条目，超时后应自动移除。
+  private var nonLoopingFinishedTimerIds: Set<UUID> = []
   /// 屏幕中央的强提醒卡片；同一时刻只显示一个，其余排队。
   private var reminderAlertPanel: ReminderAlertPanel?
   private var reminderAlertTimerId: UUID?
   private var pendingAlerts:
   [(id: UUID, name: String?, duration: TimeInterval)] = []
+  private struct PendingReminderCreation {
+    var dueDate: Date?
+    var cancelled = false
+  }
+  private var pendingReminderCreations: [UUID: PendingReminderCreation] = [:]
   internal var activeTimers:
   [(
     id: UUID, name: String?, startTime: Date, duration: TimeInterval,
@@ -49,6 +63,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   internal var pendingTimerData: (startTime: Date, duration: TimeInterval)?
   
   private var nameInputPanel: NameInputPanel?
+  private var durationAdjustPanel: DurationAdjustPanel?
   internal var dragTimerPanel: DragTimerPanel?
   
   internal var endTime: Date?
@@ -64,6 +79,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     NotificationManager.shared.checkForPermission()
     RemindersManager.migrateSelectedReminderListIfNeeded()
     loadSavedTimers()
+
+    NSWorkspace.shared.notificationCenter.addObserver(
+      self, selector: #selector(handleSystemWake(_:)),
+      name: NSWorkspace.didWakeNotification, object: nil)
     
     updateMenu()
     
@@ -102,12 +121,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
   
   func applicationWillTerminate(_ notification: Notification) {
+    NSWorkspace.shared.notificationCenter.removeObserver(
+      self, name: NSWorkspace.didWakeNotification, object: nil)
     dragTimerPanel?.cleanup()
     nameInputPanel?.cleanup()
+    durationAdjustPanel?.cleanup()
   }
   
   private func saveTimers() {
-    let timersToSave = activeTimers.map { timer -> SavedTimer in
+    let timersToSave = activeTimers.filter {
+      !nonLoopingFinishedTimerIds.contains($0.id)
+    }.map { timer -> SavedTimer in
       return SavedTimer(
         id: timer.id.uuidString,
         name: timer.name,
@@ -219,9 +243,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
   
   internal func showNameInputField() {
+    guard let duration = pendingTimerData?.duration else { return }
     nameInputPanel?.cleanup()
     nameInputPanel = NameInputPanel(delegate: self)
-    nameInputPanel?.show(at: NSEvent.mouseLocation)
+    nameInputPanel?.show(at: NSEvent.mouseLocation, duration: duration)
+  }
+
+  internal func beginDurationAdjustment(duration: TimeInterval, at point: NSPoint) {
+    discardPendingTimerCreation()
+    guard duration > 0 else { return }
+    let duration = TimerMath.adjustedDuration(duration, by: 0)
+    pendingTimerData = (startTime: Date(), duration: duration)
+    let panel = DurationAdjustPanel(duration: duration, delegate: self)
+    durationAdjustPanel = panel
+    panel.show(at: point)
+  }
+
+  internal func discardPendingTimerCreation() {
+    durationAdjustPanel?.cleanup()
+    durationAdjustPanel = nil
+    nameInputPanel?.cleanup()
+    nameInputPanel = nil
+    pendingTimerData = nil
   }
   
   /// 菜单栏里分配给计时器名称的宽度预算（pt）。
@@ -316,6 +359,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  internal func nextTimerIndexForMenuBar() -> Int? {
+    activeTimers.indices
+      .filter {
+        !finishedTimerIds.contains(activeTimers[$0].id)
+          && activeTimers[$0].pausedRemaining == nil
+      }
+      .min { first, second in
+        let timer1 = activeTimers[first]
+        let timer2 = activeTimers[second]
+        return remainingSeconds(
+          startTime: timer1.startTime, duration: timer1.duration,
+          pausedRemaining: timer1.pausedRemaining)
+          < remainingSeconds(
+            startTime: timer2.startTime, duration: timer2.duration,
+            pausedRemaining: timer2.pausedRemaining)
+      }
+  }
+
   internal func updateStatusIcon() {
     syncStatusIconInterval()
 
@@ -323,16 +384,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       && runningTimerCount > 0
     {
 
-      let nextTimer = activeTimers
-        .filter { !finishedTimerIds.contains($0.id) }
-        .min { timer1, timer2 in
-          remainingSeconds(
-            startTime: timer1.startTime, duration: timer1.duration,
-            pausedRemaining: timer1.pausedRemaining)
-            < remainingSeconds(
-              startTime: timer2.startTime, duration: timer2.duration,
-              pausedRemaining: timer2.pausedRemaining)
-        }
+      let nextTimer = nextTimerIndexForMenuBar().map { activeTimers[$0] }
       
       if let timer = nextTimer {
         let remainingTime = remainingSeconds(
@@ -427,8 +479,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           setStatusTitle("\(activeTimers.count)")
         }
       } else {
-        if lastStatusImageKey == "clock" { return }
+        if lastStatusImageKey == "idle" { return }
         clearStatusTitle()
+        if let iconURL = Bundle.main.url(forResource: "StatusItemTemplate", withExtension: "png"),
+          let templateImage = NSImage(contentsOf: iconURL)
+        {
+          templateImage.size = NSSize(width: 18, height: 18)
+          templateImage.isTemplate = true
+          applyStatusImage(templateImage, key: "idle")
+          return
+        }
         let symbolName: String
         if #available(macOS 15.3, *) {
           symbolName = "clock.arrow.trianglehead.counterclockwise.rotate.90"
@@ -440,7 +500,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           accessibilityDescription: nil)
         {
           symbolImage.size = NSSize(width: 18, height: 18)
-          applyStatusImage(symbolImage, key: "clock")
+          applyStatusImage(symbolImage, key: "idle")
         } else {
           print("SF Symbol not found.")
         }
@@ -562,6 +622,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     refreshTickTimer()
   }
 
+  /// 唤醒与正常 tick 共用同一到期判断，避免同一个计时器重复提示。
+  internal func checkMissedDueTimers() {
+    checkExpiredTimers()
+  }
+
+  @objc private func handleSystemWake(_ notification: Notification) {
+    if Thread.isMainThread {
+      checkMissedDueTimers()
+    } else {
+      DispatchQueue.main.async { [weak self] in self?.checkMissedDueTimers() }
+    }
+  }
+
   internal func startOneTimeTimer(name: String?) {
     if let timerData = pendingTimerData
         ?? (dragTimeInterval > 0 ? (Date(), dragTimeInterval) : nil)
@@ -582,17 +655,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           let reminderTitle = name ?? "计时器 \(activeTimers.count + 1)"
           let reminderNotes =
           "你的 \(Int(timerData.duration / 60)) 分钟计时已结束。"
-          let reminderTime = Date().addingTimeInterval(timerData.duration)
+          let reminderTime = startTime.addingTimeInterval(timerData.duration)
+          pendingReminderCreations[timerId] = PendingReminderCreation(dueDate: reminderTime)
 
           // 首次使用会在这里弹出「提醒事项」授权框，授权成功后再创建。
           Task { @MainActor [weak self] in
             guard let self = self else { return }
+            defer { self.pendingReminderCreations.removeValue(forKey: timerId) }
             do {
-              let createdId = try await RemindersManager.shared
-                .createReminderAfterEnsuringAccess(
-                  title: reminderTitle, notes: reminderNotes,
-                  dueDate: reminderTime)
+              guard self.pendingReminderCreations[timerId]?.cancelled == false else { return }
+              let granted = await self.remindersManager.requestAccess()
+              guard let pending = self.pendingReminderCreations[timerId],
+                !pending.cancelled else { return }
+              guard granted else { throw RemindersError.accessDenied }
+              // 授权可能耗时；创建时必须使用最新的暂停 / 继续状态。
+              let createdId = try self.remindersManager.createReminder(
+                title: reminderTitle, notes: reminderNotes, dueDate: pending.dueDate)
+              // 创建期间若发生重入删除，按删除时的设置清理刚建的提醒。
+              if self.pendingReminderCreations[timerId]?.cancelled == true {
+                do {
+                  try await self.remindersManager.deleteReminder(withIdentifier: createdId)
+                } catch {
+                  print("Failed to delete orphaned reminder: \(error.localizedDescription)")
+                  self.showReminderError(error, action: "删除")
+                }
+                return
+              }
               self.assignReminderId(createdId, to: timerId)
+              // createReminder 调用中途可能已暂停/继续；用最新 pending.dueDate 再同步一次。
+              if let latestDueDate = self.pendingReminderCreations[timerId]?.dueDate,
+                latestDueDate != pending.dueDate
+              {
+                do {
+                  try self.remindersManager.updateReminder(
+                    withIdentifier: createdId, dueDate: latestDueDate)
+                } catch {
+                  print("Failed to sync reminder after create: \(error.localizedDescription)")
+                  self.showReminderError(error, action: "更新")
+                }
+              } else if self.pendingReminderCreations[timerId]?.dueDate == nil,
+                pending.dueDate != nil
+              {
+                do {
+                  try self.remindersManager.updateReminder(
+                    withIdentifier: createdId, dueDate: nil)
+                } catch {
+                  print("Failed to clear reminder due date after create: \(error.localizedDescription)")
+                  self.showReminderError(error, action: "更新")
+                }
+              }
             } catch {
               print("Failed to create reminder: \(error.localizedDescription)")
               self.showReminderError(error)
@@ -633,13 +744,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       switch reminderError {
       case .accessDenied:
         message =
-          "没有「提醒事项」的访问权限。请到「系统设置 › 隐私与安全性 › 提醒事项」中允许 Dropclock。"
+          "没有「提醒事项」的访问权限。请到「系统设置 › 隐私与安全性 › 提醒事项」中允许 KLock。"
       case .noReminderListSelected:
         message = "没有可用的提醒列表。请在偏好设置的「提醒」分页中重新选择一个列表。"
       case .reminderCreationFailed(let underlying):
         message = "创建提醒失败：\(underlying.localizedDescription)"
       case .reminderDeletionFailed(let underlying):
         message = "删除提醒失败：\(underlying.localizedDescription)"
+      case .reminderUpdateFailed(let underlying):
+        message = "更新提醒失败：\(underlying.localizedDescription)"
       case .reminderNotFound:
         message = "找不到对应的提醒，它可能已在「提醒事项」中被删除。"
       }
@@ -667,28 +780,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func timerFinished(id: UUID) {
-    guard let index = activeTimers.firstIndex(where: { $0.id == id }) else {
+    guard !finishedTimerIds.contains(id),
+      let index = activeTimers.firstIndex(where: { $0.id == id }),
+      activeTimers[index].pausedRemaining == nil
+    else {
       return
     }
 
     let timer = activeTimers[index]
     let timerName = timer.name
-    NotificationManager.shared.dispatchNotification(timerName: timerName)
-
     let defaults = UserDefaults.standard
     let shouldLoopAlarm = defaults.bool(forKey: "playAlarmSound")
       && defaults.bool(forKey: "loopAlarmUntilStopped")
-    SoundManager.shared.playSelectedAlarmIfEnabled(loop: shouldLoopAlarm)
+    // 先标记完成，避免唤醒和 tick 在相同到期事件上重复入队。
+    finishedTimerIds.insert(id)
+    if !shouldLoopAlarm {
+      nonLoopingFinishedTimerIds.insert(id)
+    }
+
+    notifyTimerFinished(timerName)
+    soundManager.playSelectedAlarmIfEnabled(for: id, loop: shouldLoopAlarm)
 
     if let recordId = timer.recordId {
       HistoryStore.shared.markFinished(recordId: recordId)
-    }
-
-    if shouldLoopAlarm {
-      // 循环闹铃时保留在列表里并标记为已结束，用户点「删除」即可停止。
-      finishedTimerIds.insert(id)
-    } else {
-      activeTimers.remove(at: index)
     }
 
     enqueueReminderAlert(
@@ -733,10 +847,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         self?.dismissReminderAlert(
           timerId: next.id, name: next.name, snoozeMinutes: nil)
       },
+      onTimeout: { [weak self] in
+        self?.autoDismissReminderAlert(timerId: next.id)
+      },
       onSnooze: { [weak self] snoozeMinutes in
         self?.dismissReminderAlert(
           timerId: next.id, name: next.name, snoozeMinutes: snoozeMinutes)
+      },
+      onPause: { [weak self] in
+        guard let self = self else { return }
+        self.finishedTimerIds.remove(next.id)
+        self.nonLoopingFinishedTimerIds.remove(next.id)
+        self.togglePause(id: next.id)
+        self.reminderAlertPanel = nil
+        self.reminderAlertTimerId = nil
+        self.soundManager.stopSound(for: next.id)
+        self.showNextReminderAlert()
+      },
+      onDelete: { [weak self] in
+        self?.deleteTimer(id: next.id)
       })
+  }
+
+  private func autoDismissReminderAlert(timerId: UUID) {
+    reminderAlertPanel = nil
+    reminderAlertTimerId = nil
+
+    // 循环闹铃承诺一直播放到手动停止；自动收起画面时保留对应条目和声音。
+    if !finishedTimerIds.contains(timerId) || nonLoopingFinishedTimerIds.contains(timerId) {
+      soundManager.stopSound(for: timerId)
+      removeTimerEntry(id: timerId)
+    }
+    showNextReminderAlert()
   }
 
   private func dismissReminderAlert(
@@ -744,7 +886,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   ) {
     reminderAlertPanel = nil
     reminderAlertTimerId = nil
-    SoundManager.shared.stopActiveSound()
+    soundManager.stopSound(for: timerId)
     removeTimerEntry(id: timerId)
 
     if let snoozeMinutes = snoozeMinutes {
@@ -764,6 +906,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     else { return }
     activeTimers.remove(at: index)
     finishedTimerIds.remove(id)
+    nonLoopingFinishedTimerIds.remove(id)
+    refreshTickTimer()
     saveTimers()
     updateStatusIcon()
     updateMenu()
@@ -779,10 +923,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let timerToRemove = activeTimers[timerIndex]
     
     if UserDefaults.standard.bool(forKey: "deleteReminders") {
+      if pendingReminderCreations[timerId] != nil {
+        pendingReminderCreations[timerId]?.cancelled = true
+      }
       if let reminderId = timerToRemove.reminderId {
         Task {
           do {
-            try await RemindersManager.shared.deleteReminder(
+            try await self.remindersManager.deleteReminder(
               withIdentifier: reminderId)
           } catch {
             print("Failed to delete reminder: \(error.localizedDescription)")
@@ -793,6 +940,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     finishedTimerIds.remove(timerId)
+    nonLoopingFinishedTimerIds.remove(timerId)
     pendingAlerts.removeAll { $0.id == timerId }
     if let recordId = timerToRemove.recordId {
       HistoryStore.shared.markCancelled(recordId: recordId)
@@ -800,15 +948,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     activeTimers.remove(at: timerIndex)
     refreshTickTimer()
 
+    soundManager.stopSound(for: timerId)
+
     // 如果屏幕上的提醒卡片正属于这个计时器，一并关掉并接着显示下一条。
-    if reminderAlertTimerId == timerId {
+    let shouldShowNextAlert = reminderAlertTimerId == timerId
+    if shouldShowNextAlert {
       reminderAlertPanel?.close()
       reminderAlertPanel = nil
       reminderAlertTimerId = nil
+    }
+
+    if shouldShowNextAlert {
       showNextReminderAlert()
     }
 
-    SoundManager.shared.stopActiveSound()
     saveTimers()
     updateStatusIcon()
 
@@ -841,6 +994,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       activeTimers[index].pausedRemaining = max(0, remaining)
     }
 
+    let updatedTimer = activeTimers[index]
+    let reminderDueDate = updatedTimer.pausedRemaining == nil
+      ? updatedTimer.startTime.addingTimeInterval(updatedTimer.duration) : nil
+    if pendingReminderCreations[timerId] != nil {
+      pendingReminderCreations[timerId]?.dueDate = reminderDueDate
+    }
+    if let reminderId = updatedTimer.reminderId {
+      do {
+        try remindersManager.updateReminder(withIdentifier: reminderId, dueDate: reminderDueDate)
+      } catch {
+        print("Failed to update reminder: \(error.localizedDescription)")
+        showReminderError(error, action: "更新")
+      }
+    }
+
     refreshTickTimer()
     saveTimers()
     updateStatusIcon()
@@ -852,7 +1020,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @objc func showHistory() {
+    HistoryWindowController.shared.onRerun = { [weak self] record in
+      self?.pendingTimerData = (Date(), record.duration)
+      self?.startOneTimeTimer(name: record.name)
+    }
     HistoryWindowController.shared.showWindow()
+  }
+
+  @objc func stopAllSounds() {
+    soundManager.stopAllSounds()
   }
   
   @objc func quit() {
@@ -925,7 +1101,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       menu.addItem(NSMenuItem.separator())
     } else {
       // 空状态给一句用法提示，否则第一次打开只有一个光秃秃的「历史记录」
-      menu.addItem(sectionHeaderItem("按住图标向下拖动即可新建计时器", count: 0))
+      menu.addItem(sectionHeaderItem("按住图标往下拖", count: 0))
       menu.addItem(NSMenuItem.separator())
     }
     
@@ -935,11 +1111,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         action: #selector(showHistory), keyEquivalent: "h"))
     menu.addItem(
       actionItem(
+        "停止全部响铃", symbol: "speaker.slash",
+        action: #selector(stopAllSounds), keyEquivalent: ""))
+    menu.addItem(
+      actionItem(
         "偏好设置…", symbol: "gearshape",
         action: #selector(preferences), keyEquivalent: ","))
     menu.addItem(
       actionItem(
-        "退出 Dropclock", symbol: "power",
+        "退出 KLock", symbol: "power",
         action: #selector(quit), keyEquivalent: "q"))
     
     statusItem?.menu = menu
@@ -981,6 +1161,24 @@ extension AppDelegate: NameInputPanelDelegate {
   }
   
   func nameInputPanelDidCancel() {
-    pendingTimerData = nil
+    discardPendingTimerCreation()
+  }
+}
+
+extension AppDelegate: DurationAdjustPanelDelegate {
+  func durationAdjustPanelDidConfirm(duration: TimeInterval) {
+    guard pendingTimerData != nil else { return }
+    durationAdjustPanel?.cleanup()
+    durationAdjustPanel = nil
+    pendingTimerData = (startTime: Date(), duration: TimerMath.adjustedDuration(duration, by: 0))
+    if UserDefaults.standard.bool(forKey: "allowCustomNames") {
+      showNameInputField()
+    } else {
+      startOneTimeTimer(name: nil)
+    }
+  }
+
+  func durationAdjustPanelDidCancel() {
+    discardPendingTimerCreation()
   }
 }

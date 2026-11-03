@@ -2,7 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDisplayName</key>
+	<string>KLock</string>
+	<key>CFBundleName</key>
+	<string>KLock</string>
 	<key>NSRemindersUsageDescription</key>
-	<string>Dropclock 需要在「提醒事项」中创建和删除提醒，以便为你的计时器生成配套提醒。</string>
+	<string>KLock 需要在「提醒事项」中创建和删除提醒，以便为你的计时器生成配套提醒。</string>
 </dict>
 </plist>

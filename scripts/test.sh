@@ -5,8 +5,9 @@ cd "$(dirname "$0")/.."
 
 SDK="$(xcrun --show-sdk-path)"
 OUT="$(mktemp -t dropclock-tests)"
+CACHE="${CLANG_MODULE_CACHE_PATH:-/private/tmp/dropclock-module-cache}"
 
-swiftc -O -sdk "$SDK" -target arm64-apple-macos13.0 -swift-version 5 \
+swiftc -O -module-cache-path "$CACHE" -sdk "$SDK" -target arm64-apple-macos13.0 -swift-version 5 \
   Dropclock/Support/TimerTextFormatter.swift \
   Dropclock/Model/HistoryStore.swift \
   Dropclock/Model/SavedTimers.swift \

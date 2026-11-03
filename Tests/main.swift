@@ -79,6 +79,29 @@ expect(legacyRecord?.first?.createdAt != nil, "旧记录有兜底创建时间")
 // MARK: - 暂停与恢复
 
 print("TimerMath")
+// 窗口边缘及特殊步进的行为会直接影响松手后的时长。
+expect(
+  TimerMath.snappedDragDuration(stepped: 270, continuous: 290, specialMode: false) == 300,
+  "普通拖拽进入 5 分钟磁吸窗口时吸附")
+expect(
+  TimerMath.snappedDragDuration(stepped: 270, continuous: 289, specialMode: false) == 270,
+  "磁吸窗口外保留原有步进")
+expect(
+  TimerMath.snappedDragDuration(stepped: 540, continuous: 592, specialMode: false) == 600,
+  "普通拖拽吸附到 10 分钟")
+expect(
+  TimerMath.snappedDragDuration(stepped: 1440, continuous: 1492, specialMode: false) == 1500,
+  "普通拖拽吸附到 25 分钟")
+expect(
+  TimerMath.snappedDragDuration(stepped: 2640, continuous: 2692, specialMode: false) == 2700,
+  "普通拖拽吸附到 45 分钟")
+expect(
+  TimerMath.snappedDragDuration(stepped: 592, continuous: 592, specialMode: true) == 592,
+  "特殊步进不被磁吸覆盖")
+expect(TimerMath.adjustedDuration(120, by: 15) == 135, "微调不重新磁吸")
+expect(TimerMath.adjustedDuration(3, by: -15) == 1, "微调不会小于 1 秒")
+expect(TimerMath.adjustedDuration(604_790, by: 60) == 604_800, "微调不会超过 7 天")
+
 let running = TimerMath.remaining(
   startTime: now.addingTimeInterval(-60), duration: 120,
   pausedRemaining: nil, now: now)

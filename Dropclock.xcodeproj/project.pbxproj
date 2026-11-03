@@ -269,7 +269,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Dropclock/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Dropclock;
+				INFOPLIST_KEY_CFBundleDisplayName = KLock;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -299,7 +299,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Dropclock/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Dropclock;
+				INFOPLIST_KEY_CFBundleDisplayName = KLock;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";

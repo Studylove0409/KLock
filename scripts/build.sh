@@ -6,10 +6,11 @@ cd "$(dirname "$0")/.."
 
 APP="build/Dropclock.app"
 SDK="$(xcrun --show-sdk-path)"
+CACHE="${CLANG_MODULE_CACHE_PATH:-/private/tmp/dropclock-module-cache}"
 
 echo "==> 编译"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-swiftc -O -parse-as-library -sdk "$SDK" -target arm64-apple-macos13.0 \
+swiftc -O -parse-as-library -module-cache-path "$CACHE" -sdk "$SDK" -target arm64-apple-macos13.0 \
   -swift-version 5 \
   -o "$APP/Contents/MacOS/Dropclock" \
   $(find Dropclock -name "*.swift")
@@ -23,7 +24,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<key>CFBundleDevelopmentRegion</key>
 	<string>zh_CN</string>
 	<key>CFBundleDisplayName</key>
-	<string>Dropclock</string>
+	<string>KLock</string>
 	<key>CFBundleExecutable</key>
 	<string>Dropclock</string>
 	<key>CFBundleIdentifier</key>
@@ -33,7 +34,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Dropclock</string>
+	<string>KLock</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -49,7 +50,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSRemindersUsageDescription</key>
-	<string>Dropclock 需要在「提醒事项」中创建和删除提醒，以便为你的计时器生成配套提醒。</string>
+	<string>KLock 需要在「提醒事项」中创建和删除提醒，以便为你的计时器生成配套提醒。</string>
 </dict>
 </plist>
 PLIST
@@ -61,17 +62,24 @@ echo "==> 拷贝图标"
 if [[ -f assets/AppIcon.icns ]]; then
   cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 fi
+for status_icon in assets/StatusItemTemplate.png assets/StatusItemTemplate@2x.png; do
+  if [[ -f "$status_icon" ]]; then
+    cp "$status_icon" "$APP/Contents/Resources/"
+  fi
+done
+if [[ -f assets/StatusItemTemplate@2x.png ]]; then
+  cp assets/StatusItemTemplate@2x.png "$APP/Contents/Resources/StatusItemTemplate@2x.png"
+fi
 
 echo "==> 临时签名"
-# Desktop 属于 iCloud 同步目录，直接 codesign 会因扩展属性报 detritus 错误，
-# 所以先在临时目录签名再拷回。
-TMP="$(mktemp -d)"
-ditto "$APP" "$TMP/Dropclock.app"
-xattr -cr "$TMP/Dropclock.app"
-codesign --force --sign - "$TMP/Dropclock.app"
-rm -rf "$APP"
-ditto "$TMP/Dropclock.app" "$APP"
-rm -rf "$TMP"
+# Desktop 属于 iCloud 同步目录；在本地副本签名并严格验证，再用 ditto 覆盖回写。
+# 保留验签副本，整个构建过程无需递归删除已有应用目录。
+VERIFIED_APP="/private/tmp/Dropclock-DeskMinder-Verified.app"
+ditto "$APP" "$VERIFIED_APP"
+xattr -cr "$VERIFIED_APP"
+codesign --force --sign - "$VERIFIED_APP"
+codesign --verify --deep --strict "$VERIFIED_APP"
+ditto "$VERIFIED_APP" "$APP"
 codesign --verify "$APP"
 
 echo "==> 完成: $APP"

@@ -48,3 +48,9 @@ Carthage/Build/
 .workbuddy/
 .claude/
 .cursor/
+
+# Local tooling / acceptance scratch (do not publish)
+.codegraph/
+.accept-tmp/
+docs/deskminder-refs/
+docs/superpowers/

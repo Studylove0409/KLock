@@ -23,11 +23,7 @@ class DragTimerPanel {
     cleanup()
 
     // 用鼠标所在的那块屏幕，避免多屏时先在主屏闪一下再跳过去
-    guard
-      let screen = NSScreen.screens.first(where: {
-        $0.frame.contains(NSEvent.mouseLocation)
-      }) ?? NSScreen.main
-    else { return }
+    guard let screen = ScreenPlacement.screenForMouse() else { return }
     let windowSize = NSSize(width: Self.minWidth, height: Self.panelHeight)
     let windowOrigin = NSPoint(
       x: screen.frame.midX - windowSize.width / 2,
@@ -50,36 +46,15 @@ class DragTimerPanel {
     // close() 时不让 AppKit 自行释放，否则与 ARC 的强引用叠加会造成过度释放。
     panel.isReleasedWhenClosed = false
 
-    let blurView = NSVisualEffectView(
+    let blurView = Glass.makeGlassPanelChrome(
       frame: NSRect(origin: .zero, size: windowSize))
-    blurView.material = .hudWindow
-    blurView.blendingMode = .behindWindow
-    blurView.state = .active
-    blurView.wantsLayer = true
-    blurView.layer?.cornerRadius = 16
-    blurView.layer?.cornerCurve = .continuous
-    blurView.layer?.masksToBounds = true
-    blurView.layer?.borderWidth = 1
-    blurView.layer?.borderColor =
-      NSColor.white.withAlphaComponent(0.14).cgColor
-
-    // 顶部到中段的高光，和其他面板保持同一种玻璃质感
-    let sheen = CAGradientLayer()
-    sheen.frame = CGRect(origin: .zero, size: windowSize)
-    sheen.colors = [
-      NSColor.white.withAlphaComponent(0.10).cgColor,
-      NSColor.white.withAlphaComponent(0).cgColor,
-    ]
-    sheen.startPoint = CGPoint(x: 0.5, y: 1)
-    sheen.endPoint = CGPoint(x: 0.5, y: 0.45)
-    blurView.layer?.addSublayer(sheen)
     blurView.autoresizingMask = [.width, .height]
     self.blurView = blurView
 
     // 等宽数字，避免每帧跳动时文字宽度抖动
     let timerLabel = NSTextField(labelWithString: "00:00")
     timerLabel.font = Self.timerFont
-    timerLabel.textColor = .white
+    timerLabel.textColor = .labelColor
     timerLabel.alignment = .center
     timerLabel.isBordered = false
     timerLabel.drawsBackground = false
@@ -87,7 +62,7 @@ class DragTimerPanel {
 
     let endTimeLabel = NSTextField(labelWithString: "结束于 12:00")
     endTimeLabel.font = Self.endFont
-    endTimeLabel.textColor = NSColor.white.withAlphaComponent(0.55)
+    endTimeLabel.textColor = .secondaryLabelColor
     endTimeLabel.alignment = .center
     endTimeLabel.isBordered = false
     endTimeLabel.drawsBackground = false
@@ -144,21 +119,12 @@ class DragTimerPanel {
       let windowHeight = panel.frame.height
 
       // 贴着屏幕边缘拖时不要把面板推出可视区
-      let screen = NSScreen.screens.first { $0.frame.contains(point) }
-        ?? NSScreen.main
+      let screen = ScreenPlacement.screenForMouse()
       let visible = screen?.visibleFrame ?? .zero
-      var originX = point.x - windowWidth / 2
-      var originY = point.y - windowHeight / 2
-      if visible.width > 0, visible.height > 0 {
-        let margin: CGFloat = 6
-        originX = min(
-          max(originX, visible.minX + margin),
-          visible.maxX - windowWidth - margin)
-        originY = min(
-          max(originY, visible.minY + margin),
-          visible.maxY - windowHeight - margin)
-      }
-      panel.setFrameOrigin(NSPoint(x: originX, y: originY))
+      let origin = Glass.clampedPanelOrigin(
+        NSPoint(x: point.x - windowWidth / 2, y: point.y - windowHeight / 2),
+        size: panel.frame.size, visibleFrame: visible, margin: 6)
+      panel.setFrameOrigin(origin)
     }
   }
 

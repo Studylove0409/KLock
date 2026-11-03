@@ -1,90 +1,152 @@
 import SwiftUI
 
-/// 计时结束提醒卡片的内容层。
-///
-/// 卡片底下的毛玻璃由 AppKit 的 NSVisualEffectView 提供（必须 behindWindow
-/// 才能透出桌面），这里只负责前景排版。
-struct ReminderAlertView: View {
-  let timerName: String
-  let detail: String
-  let onClose: () -> Void
-  let onSnooze: (Int) -> Void
-
-  @State private var appeared = false
-
+/// 屏幕下方逐渐变暗，上方保持透明。
+struct ReminderBackdropView: View {
   var body: some View {
-    VStack(spacing: 0) {
-      iconBadge
-        .padding(.top, 30)
-
-      Text("提 醒")
-        .font(.system(size: 10.5, weight: .semibold))
-        .kerning(2)
-        .foregroundStyle(.white.opacity(0.5))
-        .padding(.top, 16)
-
-      Text(timerName)
-        .font(.system(size: 26, weight: .bold))
-        .foregroundStyle(.white)
-        .multilineTextAlignment(.center)
-        .lineLimit(2)
-        .minimumScaleFactor(0.7)
-        .padding(.top, 5)
-        .padding(.horizontal, 26)
-
-      Text(detail)
-        .font(.system(size: 12.5))
-        .foregroundStyle(.white.opacity(0.58))
-        .padding(.top, 7)
-
-      HStack(spacing: 9) {
-        AlertButton(title: "关闭", kind: .primary, action: onClose)
-        AlertButton(title: "稍后 5 分钟", kind: .secondary) { onSnooze(5) }
-        AlertButton(title: "稍后 15 分钟", kind: .secondary) { onSnooze(15) }
+    GeometryReader { geometry in
+      ZStack {
+        LinearGradient(
+          stops: [
+            .init(color: .clear, location: 0),
+            .init(color: .clear, location: 0.25),
+            .init(color: .black.opacity(0.33), location: 0.65),
+            .init(color: .black.opacity(0.64), location: 1),
+          ], startPoint: .top, endPoint: .bottom
+        )
+        RadialGradient(
+          colors: [.black.opacity(0.33), .clear],
+          center: UnitPoint(x: 0.5, y: 0.38),
+          startRadius: 0,
+          endRadius: max(240, min(geometry.size.width, geometry.size.height) * 0.55)
+        )
       }
-      .padding(.horizontal, 24)
-      .padding(.top, 26)
-      .padding(.bottom, 24)
     }
-    .frame(maxWidth: .infinity)
-    .opacity(appeared ? 1 : 0)
-    .scaleEffect(appeared ? 1 : 0.96)
-    .onAppear {
-      withAnimation(.easeOut(duration: 0.18)) { appeared = true }
-    }
-  }
-
-  /// 顶部的计时器徽章：半透明方块 + 细细的高光
-  private var iconBadge: some View {
-    ZStack {
-      RoundedRectangle(cornerRadius: 15, style: .continuous)
-        .fill(Color.white.opacity(0.10))
-        .overlay(
-          RoundedRectangle(cornerRadius: 15, style: .continuous)
-            .fill(
-              LinearGradient(
-                colors: [Color.white.opacity(0.16), Color.clear],
-                startPoint: .top, endPoint: .bottom))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 15, style: .continuous)
-            .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
-        )
-
-      Image(systemName: "timer")
-        .font(.system(size: 24, weight: .medium))
-        .foregroundStyle(.white.opacity(0.92))
-    }
-    .frame(width: 54, height: 54)
+    .allowsHitTesting(false)
+    .ignoresSafeArea()
   }
 }
 
-/// 卡片底部的胶囊按钮：主按钮实心，次按钮玻璃描边。
+/// 渐变上的提醒标题和操作区。
+struct ReminderAlertView: View {
+  let timerName: String
+  let detail: String
+  let dismissAt: Date
+  let dismissInterval: TimeInterval
+  let onClose: () -> Void
+  let onSnooze: (Int) -> Void
+  let onPause: () -> Void
+  let onDelete: () -> Void
+
+  @State private var appeared = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  var body: some View {
+    TimelineView(.periodic(from: .now, by: reduceMotion ? 1 : 0.05)) { context in
+      let remaining = max(0, dismissAt.timeIntervalSince(context.date))
+      let progress = min(1, max(0, 1 - remaining / dismissInterval))
+      let secondsRemaining = Int(ceil(remaining))
+
+      VStack(spacing: 0) {
+        Text("提醒")
+          .font(.system(size: 11, weight: .medium))
+          .tracking(2)
+          .foregroundStyle(.white.opacity(0.62))
+          .frame(maxWidth: 320)
+          .overlay(alignment: .trailing) {
+            Menu {
+              Button(action: onPause) { Label("暂停", systemImage: "pause.fill") }
+              Button(role: .destructive, action: onDelete) {
+                Label("删除", systemImage: "trash")
+              }
+            } label: {
+              Image(systemName: "ellipsis")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.74))
+                .frame(width: 28, height: 28)
+                .contentShape(Circle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("更多操作")
+            .accessibilityHint("暂停或删除计时器")
+          }
+
+        Text(timerName)
+          .font(.system(size: 36, weight: .bold))
+          .foregroundStyle(.white)
+          .multilineTextAlignment(.center)
+          .lineLimit(1)
+          .truncationMode(.tail)
+          .accessibilityLabel(timerName)
+          .padding(.top, 8)
+
+        Text(detail)
+          .font(.system(size: 13))
+          .foregroundStyle(.white.opacity(0.74))
+          .lineLimit(1)
+          .padding(.top, 7)
+
+        HStack(spacing: 10) {
+          AlertButton(
+            title: "关", symbol: "xmark", kind: .primary,
+            progress: progress, secondsRemaining: secondsRemaining, action: onClose)
+
+          Menu {
+            Button("5 分钟") { onSnooze(5) }
+            Button("15 分钟") { onSnooze(15) }
+          } label: {
+            Label("稍后", systemImage: "clock.arrow.circlepath")
+              .font(.system(size: 13, weight: .medium))
+              .foregroundStyle(.white.opacity(0.95))
+              .frame(width: 155)
+              .frame(height: Glass.primaryCapsuleHeight)
+          }
+          .menuStyle(.borderlessButton)
+          .menuIndicator(.hidden)
+          .fixedSize()
+          .frame(width: 155, height: Glass.primaryCapsuleHeight)
+          .background(
+            Capsule()
+              .fill(Glass.alertButtonFill(primary: false, hovering: false, pressed: false))
+          )
+          .overlay(
+            Capsule()
+              .strokeBorder(
+                Glass.alertButtonBorder(hovering: false), lineWidth: Glass.capsuleBorderWidth)
+          )
+          .contentShape(Capsule())
+          .accessibilityLabel("稍后")
+          .accessibilityHint("选择 5 分钟或 15 分钟后提醒")
+        }
+        .frame(maxWidth: 320)
+        .padding(.top, 20)
+      }
+    }
+    .padding(.horizontal, 24)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .shadow(color: .black.opacity(0.24), radius: 12, y: 3)
+    .opacity(appeared ? 1 : 0)
+    .offset(y: appeared ? 0 : 8)
+    .onAppear {
+      if reduceMotion {
+        appeared = true
+      } else {
+        withAnimation(.easeOut(duration: 0.22)) { appeared = true }
+      }
+    }
+  }
+}
+
+/// 半透明按钮，让背景仍然透出来。
 private struct AlertButton: View {
   enum Kind { case primary, secondary }
 
   let title: String
+  let symbol: String
   let kind: Kind
+  var progress: Double? = nil
+  var secondsRemaining: Int? = nil
   let action: () -> Void
 
   @State private var isHovering = false
@@ -92,27 +154,47 @@ private struct AlertButton: View {
 
   var body: some View {
     Button(action: action) {
-      Text(title)
-        .font(.system(size: 12.5, weight: .semibold))
-        .foregroundStyle(
-          kind == .primary ? Color.black.opacity(0.85) : Color.white.opacity(0.92)
-        )
+      HStack(spacing: 6) {
+        if let progress = progress {
+          ZStack {
+            Circle()
+              .stroke(Color.white.opacity(0.3), lineWidth: 1.5)
+            Circle()
+              .trim(from: 0, to: progress)
+              .stroke(Color.white, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+              .rotationEffect(.degrees(-90))
+            Image(systemName: symbol)
+              .font(.system(size: 7, weight: .bold))
+          }
+          .frame(width: 16, height: 16)
+          .accessibilityHidden(true)
+        } else {
+          Image(systemName: symbol)
+            .accessibilityHidden(true)
+        }
+        Text(title)
+      }
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white.opacity(0.95))
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
         .frame(maxWidth: .infinity)
-        .frame(height: 32)
+        .frame(height: Glass.primaryCapsuleHeight)
         .background(
-          RoundedRectangle(cornerRadius: 9, style: .continuous)
+          Capsule()
             .fill(background)
         )
         .overlay(
-          RoundedRectangle(cornerRadius: 9, style: .continuous)
+          Capsule()
             .strokeBorder(
-              kind == .secondary
-                ? Color.white.opacity(isHovering ? 0.26 : 0.16) : Color.clear,
-              lineWidth: 1)
+              Glass.alertButtonBorder(hovering: isHovering),
+              lineWidth: Glass.capsuleBorderWidth)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .contentShape(Capsule())
     }
     .buttonStyle(.plain)
+    .accessibilityLabel(Text(title))
+    .accessibilityValue(Text(secondsRemaining.map { "\($0) 秒后自动收起" } ?? ""))
     .onHover { isHovering = $0 }
     .simultaneousGesture(
       DragGesture(minimumDistance: 0)
@@ -123,11 +205,6 @@ private struct AlertButton: View {
   }
 
   private var background: Color {
-    switch kind {
-    case .primary:
-      return Color.white.opacity(isPressed ? 0.72 : (isHovering ? 1.0 : 0.92))
-    case .secondary:
-      return Color.white.opacity(isPressed ? 0.24 : (isHovering ? 0.16 : 0.10))
-    }
+    Glass.alertButtonFill(primary: kind == .primary, hovering: isHovering, pressed: isPressed)
   }
 }

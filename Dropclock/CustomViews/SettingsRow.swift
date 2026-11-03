@@ -4,7 +4,9 @@ import SwiftUI
 /// 悬停时整行有极淡的高光，和系统设置的手感一致。
 struct SettingsRow<Content: View>: View {
   let title: String
-  let helpText: String
+  let subtitle: String?
+  let subtitleColor: Color
+  let helpText: String?
   let content: () -> Content
   /// 卡片里除第一行外都画一条顶部细线，和系统设置一致
   let showsTopDivider: Bool
@@ -12,10 +14,14 @@ struct SettingsRow<Content: View>: View {
   @State private var isHovering = false
 
   init(
-    title: String, showsTopDivider: Bool = true, helpText: String,
+    title: String, subtitle: String? = nil, subtitleColor: Color = .secondary,
+    showsTopDivider: Bool = true,
+    helpText: String? = nil,
     @ViewBuilder content: @escaping () -> Content
   ) {
     self.title = title
+    self.subtitle = subtitle
+    self.subtitleColor = subtitleColor
     self.helpText = helpText
     self.showsTopDivider = showsTopDivider
     self.content = content
@@ -23,26 +29,37 @@ struct SettingsRow<Content: View>: View {
 
   var body: some View {
     HStack(spacing: 12) {
-      HStack(spacing: 5) {
-        Text(title)
-          .font(.system(size: 12.5))
-          .foregroundStyle(.primary)
-        Button {
-          isShowingHelp.toggle()
-        } label: {
-          Image(systemName: "questionmark.circle")
-            .font(.system(size: 11))
-            .foregroundStyle(.tertiary)
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 5) {
+          Text(title)
+            .font(.system(size: 12.5))
+            .foregroundStyle(.primary)
+          if let helpText = helpText {
+            Button {
+              isShowingHelp.toggle()
+            } label: {
+              Image(systemName: "questionmark.circle")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("\(title)说明"))
+            .accessibilityHint(Text("显示此设置的详细说明"))
+            .popover(isPresented: $isShowingHelp, arrowEdge: .top) {
+              Text(helpText)
+                .font(.system(size: 12))
+                .multilineTextAlignment(.leading)
+                .frame(width: 260, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(12)
+            }
+          }
         }
-        .buttonStyle(.plain)
-        .popover(isPresented: $isShowingHelp, arrowEdge: .top) {
-          Text(helpText)
-            .font(.system(size: 12))
-            .multilineTextAlignment(.leading)
-            .lineLimit(4)
-            .frame(width: 260, alignment: .leading)
+        if let subtitle = subtitle {
+          Text(subtitle)
+            .font(.system(size: 11.5))
+            .foregroundStyle(subtitleColor)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(12)
         }
       }
 

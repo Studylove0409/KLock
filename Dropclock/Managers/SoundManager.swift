@@ -1,11 +1,35 @@
 import AppKit
 
-class SoundManager {
+protocol AlarmSoundPlaying: AnyObject {
+  var loops: Bool { get set }
+  var volume: Float { get set }
+  @discardableResult func play() -> Bool
+  @discardableResult func stop() -> Bool
+}
+
+extension NSSound: AlarmSoundPlaying {}
+
+class SoundManager: NSObject, NSSoundDelegate {
   static let shared = SoundManager()
 
   let allowedExtensions = ["mp3", "wav", "aiff", "caf", "m4a"]
-  private var activeSound: NSSound?
-  private var activeScopedURL: URL?
+  private let soundFactory: (URL, Bool) -> AlarmSoundPlaying?
+  private struct Playback {
+    let sound: AlarmSoundPlaying
+    let scopedURL: URL?
+  }
+  private var activeSounds: [UUID: Playback] = [:]
+
+  init(soundFactory: @escaping (URL, Bool) -> AlarmSoundPlaying? = {
+    NSSound(contentsOf: $0, byReference: $1)
+  }) {
+    self.soundFactory = soundFactory
+    super.init()
+  }
+
+  deinit {
+    stopAllSounds()
+  }
 
   func availableAlarmSounds() -> [String] {
     var names: [String] = []
@@ -17,59 +41,91 @@ class SoundManager {
     return Array(Set(names)).sorted()
   }
 
-  func playSelectedAlarmIfEnabled(loop: Bool = false) {
+  func playSelectedAlarmIfEnabled(for timerId: UUID, loop: Bool = false) {
     let defaults = UserDefaults.standard
     guard defaults.bool(forKey: "playAlarmSound") else { return }
 
-    stopActiveSound()
+    stopSound(for: timerId)
 
     if defaults.bool(forKey: "useCustomAlarmSound"),
-      playCustomSoundIfAvailable(loop: loop)
+      playCustomSoundIfAvailable(for: timerId, loop: loop)
     {
       return
     }
 
-    playPredefinedSoundFallback(loop: loop)
+    playPredefinedSoundFallback(for: timerId, loop: loop)
   }
 
-  private func playPredefinedSoundFallback(loop: Bool) {
+  private func playPredefinedSoundFallback(for timerId: UUID, loop: Bool) {
     let preferredSound = UserDefaults.standard.string(forKey: "selectedAlarmSound")
     if let preferredSound = preferredSound,
-      play(soundNamed: preferredSound, loop: loop)
+      play(soundNamed: preferredSound, for: timerId, loop: loop)
     {
       return
     }
 
     if let fallback = availableAlarmSounds().first {
-      _ = play(soundNamed: fallback, loop: loop)
+      _ = play(soundNamed: fallback, for: timerId, loop: loop)
     }
   }
 
   @discardableResult
-  func play(soundNamed name: String, loop: Bool = false) -> Bool {
+  func play(soundNamed name: String, for timerId: UUID, loop: Bool = false) -> Bool {
     guard let url = soundURL(for: name) else {
       print("SoundManager: could not find sound named \(name)")
       return false
     }
 
-    let sound = NSSound(contentsOf: url, byReference: false)
-    sound?.loops = loop
-    sound?.volume = 1.0
-    let didPlay = sound?.play() ?? false
-    if didPlay {
-      activeSound = sound
+    return playSound(at: url, for: timerId, loop: loop)
+  }
+
+  @discardableResult
+  func playSound(
+    at url: URL, for timerId: UUID, loop: Bool = false,
+    byReference: Bool = false, scopedURL: URL? = nil
+  ) -> Bool {
+    stopSound(for: timerId)
+    guard let sound = soundFactory(url, byReference) else {
+      scopedURL?.stopAccessingSecurityScopedResource()
+      return false
     }
-    return didPlay
+    sound.loops = loop
+    sound.volume = 1.0
+    (sound as? NSSound)?.delegate = self
+    guard sound.play() else {
+      scopedURL?.stopAccessingSecurityScopedResource()
+      return false
+    }
+    activeSounds[timerId] = Playback(sound: sound, scopedURL: scopedURL)
+    return true
   }
 
-  func stopActiveSound() {
-    activeSound?.stop()
-    activeSound = nil
-    activeScopedURL?.stopAccessingSecurityScopedResource()
-    activeScopedURL = nil
+  func stopSound(for timerId: UUID) {
+    guard let playback = activeSounds.removeValue(forKey: timerId) else { return }
+    playback.sound.stop()
+    playback.scopedURL?.stopAccessingSecurityScopedResource()
   }
 
-  private func playCustomSoundIfAvailable(loop: Bool) -> Bool {
+  func stopAllSounds() {
+    let playbacks = Array(activeSounds.values)
+    activeSounds.removeAll()
+    for playback in playbacks {
+      playback.sound.stop()
+      playback.scopedURL?.stopAccessingSecurityScopedResource()
+    }
+  }
+
+  func sound(_ sound: NSSound, didFinishPlaying successfully: Bool) {
+    DispatchQueue.main.async { [weak self, weak sound] in
+      guard let self = self, let sound = sound,
+        let timerId = self.activeSounds.first(where: { $0.value.sound === sound })?.key,
+        let playback = self.activeSounds.removeValue(forKey: timerId)
+      else { return }
+      playback.scopedURL?.stopAccessingSecurityScopedResource()
+    }
+  }
+
+  private func playCustomSoundIfAvailable(for timerId: UUID, loop: Bool) -> Bool {
     guard
       let bookmark = UserDefaults.standard.data(
         forKey: "customAlarmSoundBookmark")
@@ -93,18 +149,8 @@ class SoundManager {
       }
 
       guard url.startAccessingSecurityScopedResource() else { return false }
-      activeScopedURL = url
-      let sound = NSSound(contentsOf: url, byReference: true)
-      sound?.loops = loop
-      sound?.volume = 1.0
-      let didPlay = sound?.play() ?? false
-      if didPlay {
-        activeSound = sound
-      } else {
-        activeScopedURL?.stopAccessingSecurityScopedResource()
-        activeScopedURL = nil
-      }
-      if didPlay { return true }
+      return playSound(
+        at: url, for: timerId, loop: loop, byReference: true, scopedURL: url)
     } catch {
       print("SoundManager: failed to load custom sound - \(error)")
     }

@@ -5,10 +5,18 @@ enum RemindersError: Error {
   case noReminderListSelected
   case reminderCreationFailed(Error)
   case reminderDeletionFailed(Error)
+  case reminderUpdateFailed(Error)
   case reminderNotFound
 }
 
-class RemindersManager {
+protocol ReminderManaging {
+  func requestAccess() async -> Bool
+  func createReminder(title: String, notes: String?, dueDate: Date?) throws -> String
+  func updateReminder(withIdentifier identifier: String, dueDate: Date?) throws
+  func deleteReminder(withIdentifier identifier: String) async throws
+}
+
+class RemindersManager: ReminderManaging {
   static let shared = RemindersManager()
   private let eventStore = EKEventStore()
 
@@ -97,7 +105,7 @@ class RemindersManager {
   }
 
   @discardableResult
-  func createReminder(title: String, notes: String?, dueDate: Date) throws
+  func createReminder(title: String, notes: String?, dueDate: Date?) throws
     -> String
   {
     let status = checkAuthorizationStatus()
@@ -115,23 +123,11 @@ class RemindersManager {
       throw RemindersError.noReminderListSelected
     }
 
-    guard let roundedDueDate = Calendar.current.date(
-      bySetting: .second, value: 0,
-      of: dueDate.addingTimeInterval(59 - (dueDate.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 60))))
-    else {
-      throw RemindersError.reminderCreationFailed(NSError(domain: "RemindersManager", code: 0, userInfo: [NSLocalizedDescriptionKey: "Failed to compute rounded due date"]))
-    }
-
     let reminder = EKReminder(eventStore: eventStore)
     reminder.title = title
     reminder.notes = notes
     reminder.calendar = calendar
-    reminder.dueDateComponents = Calendar.current.dateComponents(
-      [.year, .month, .day, .hour, .minute], from: roundedDueDate)
-
-    let alarm = EKAlarm(absoluteDate: roundedDueDate)
-    alarm.relativeOffset = 0
-    reminder.addAlarm(alarm)
+    Self.setSchedule(of: reminder, dueDate: dueDate)
 
     do {
       try eventStore.save(reminder, commit: true)
@@ -141,6 +137,52 @@ class RemindersManager {
       return reminder.calendarItemIdentifier
     } catch {
       throw RemindersError.reminderCreationFailed(error)
+    }
+  }
+
+  /// 暂停时不留到期时间或闹铃；继续时按秒向上取整，避免系统提前提醒。
+  static func setSchedule(of reminder: EKReminder, dueDate: Date?) {
+    let roundedDueDate: Date?
+    if let dueDate = dueDate {
+      roundedDueDate = Date(
+        timeIntervalSinceReferenceDate: ceil(dueDate.timeIntervalSinceReferenceDate))
+    } else {
+      roundedDueDate = nil
+    }
+
+    for alarm in reminder.alarms ?? [] {
+      reminder.removeAlarm(alarm)
+    }
+    if let roundedDueDate = roundedDueDate {
+      let calendar = Calendar(identifier: .gregorian)
+      var components = calendar.dateComponents(
+        [.year, .month, .day, .hour, .minute, .second], from: roundedDueDate)
+      components.calendar = calendar
+      components.timeZone = calendar.timeZone
+      reminder.dueDateComponents = components
+      reminder.addAlarm(EKAlarm(absoluteDate: roundedDueDate))
+    } else {
+      reminder.dueDateComponents = nil
+    }
+  }
+
+  func updateReminder(withIdentifier identifier: String, dueDate: Date?) throws {
+    let status = checkAuthorizationStatus()
+    if #available(macOS 14, *) {
+      guard status == .fullAccess || status == .writeOnly else {
+        throw RemindersError.accessDenied
+      }
+    } else {
+      guard status == .authorized else { throw RemindersError.accessDenied }
+    }
+    guard let reminder = eventStore.calendarItem(withIdentifier: identifier) as? EKReminder
+    else { throw RemindersError.reminderNotFound }
+
+    Self.setSchedule(of: reminder, dueDate: dueDate)
+    do {
+      try eventStore.save(reminder, commit: true)
+    } catch {
+      throw RemindersError.reminderUpdateFailed(error)
     }
   }
 

@@ -4,6 +4,8 @@ import SwiftUI
 extension AppDelegate {
 
   internal func setupDrag(for button: NSStatusBarButton) {
+    // 拖拽会直接读取 UserDefaults，需在首次拖拽和打开设置之前注册默认值。
+    PreferencesViewModel.registerDefaultPreferences()
     let dragRecognizer = NSPanGestureRecognizer(
       target: self, action: #selector(handleDrag(_:)))
     button.addGestureRecognizer(dragRecognizer)
@@ -16,6 +18,8 @@ extension AppDelegate {
 
     switch sender.state {
     case .began:
+      discardPendingTimerCreation()
+      dragTimeInterval = 0
       dragStartLocation = translation
       if UserDefaults.standard.bool(forKey: "showDragIndicator") {
         createDragLine(sender: sender)
@@ -29,9 +33,12 @@ extension AppDelegate {
 
       // Time Calculation Logic
       var calculatedInterval: TimeInterval = 0
+      var continuousInterval: TimeInterval = 0
+      var usesSpecialStep = false
       if isCtrlKeyPressed
         && UserDefaults.standard.bool(forKey: "allowFiveMinuteMode")
       {
+        usesSpecialStep = true
         if maxDelta >= SecondThreshold {
           let increments = Int((maxDelta - SecondThreshold) / 5) + 1
           calculatedInterval = TimeInterval(increments * 60 * 5)
@@ -42,6 +49,7 @@ extension AppDelegate {
       } else if isShiftKeyPressed
         && UserDefaults.standard.bool(forKey: "allowSecondsMode")
       {
+        usesSpecialStep = true
         if maxDelta >= SecondThreshold {
           let increments = Int(maxDelta - SecondThreshold) + 1
           calculatedInterval = TimeInterval(30 + increments)
@@ -56,15 +64,21 @@ extension AppDelegate {
         } else if maxDelta < ThirtySecondThreshold {
           let increments = Int(maxDelta - SecondThreshold) + 1
           calculatedInterval = TimeInterval(30 + increments)
+          continuousInterval = TimeInterval(31 + maxDelta - SecondThreshold)
         } else if maxDelta < MinuteThreshold {
           let increments = Int((maxDelta - ThirtySecondThreshold) / 5)
           calculatedInterval = TimeInterval(60 + increments * 30)
+          continuousInterval = TimeInterval(60 + (maxDelta - ThirtySecondThreshold) / 5 * 30)
         } else {
           let increments = Int((maxDelta - MinuteThreshold) / 5)
           calculatedInterval = TimeInterval(300 + increments * 60)
+          continuousInterval = TimeInterval(300 + (maxDelta - MinuteThreshold) / 5 * 60)
         }
       }
 
+      // Control / Shift 已有自己的步进，跳过磁吸以免改变它们的精度。
+      calculatedInterval = TimerMath.snappedDragDuration(
+        stepped: calculatedInterval, continuous: continuousInterval, specialMode: usesSpecialStep)
       dragTimeInterval = calculatedInterval
       // 用「此刻 + 时长」而不是「按下时刻 + 时长」，
       // 因为计时器是在松手后才真正开始的，这样预览的结束时间才和实际一致。
@@ -107,16 +121,11 @@ extension AppDelegate {
 
       updateDragLine(sender: sender)
 
-    case .ended, .cancelled:
+    case .ended, .cancelled, .failed:
       removeDragTimerPanel()
       removeDragLine()
-      if dragTimeInterval > 0 {
-        if UserDefaults.standard.bool(forKey: "allowCustomNames") {
-          pendingTimerData = (startTime: Date(), duration: dragTimeInterval)
-          showNameInputField()
-        } else {
-          startOneTimeTimer(name: nil)
-        }
+      if sender.state == .ended, dragTimeInterval > 0 {
+        beginDurationAdjustment(duration: dragTimeInterval, at: NSEvent.mouseLocation)
       }
       dragTimeInterval = 0
       dragStartLocation = nil

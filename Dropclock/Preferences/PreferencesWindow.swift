@@ -11,7 +11,7 @@ class PreferencesWindowController: NSWindowController {
     let hostingController = NSHostingController(rootView: preferencesView)
 
     let window = NSWindow(contentViewController: hostingController)
-    window.title = "Dropclock 偏好设置"
+    window.title = "KLock 偏好设置"
     window.setContentSize(NSSize(width: 720, height: 540))
     window.minSize = NSSize(width: 700, height: 480)
 
@@ -42,9 +42,7 @@ class PreferencesWindowController: NSWindowController {
       }
       if !hasBeenPositioned || !isOnScreen {
         hasBeenPositioned = true
-        let screen = NSScreen.screens.first {
-          $0.frame.contains(NSEvent.mouseLocation)
-        } ?? NSScreen.main
+        let screen = ScreenPlacement.screenForMouse()
         if let visible = screen?.visibleFrame {
           let size = window.frame.size
           window.setFrameOrigin(

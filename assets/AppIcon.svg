@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>KLock app icon</title>
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#faf9f6"/>
+      <stop offset="1" stop-color="#efece6"/>
+    </linearGradient>
+  </defs>
+  <rect x="96" y="96" width="832" height="832" rx="188" fill="url(#paper)"/>
+  <circle cx="512" cy="512" r="284" fill="none" stroke="#232a2f" stroke-width="16"/>
+  <path d="M 512 512 L 688.669 410" fill="none" stroke="#5168c6" stroke-width="24" stroke-linecap="round"/>
+  <path d="M 512 512 L 388.308 425.39" fill="none" stroke="#232a2f" stroke-width="24" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="13.44" fill="#232a2f"/>
+</svg>

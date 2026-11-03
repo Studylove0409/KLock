@@ -43,8 +43,25 @@ private final class HistoryRowView: NSStackView {
   }
 }
 
+private final class HistoryRerunButton: NSButton {
+  let record: TimerRecord
+
+  init(record: TimerRecord) {
+    self.record = record
+    super.init(frame: .zero)
+    title = "再计一次"
+    bezelStyle = .rounded
+    font = NSFont.systemFont(ofSize: 11)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+}
+
 final class HistoryWindowController: NSWindowController {
   static let shared = HistoryWindowController()
+  var onRerun: ((TimerRecord) -> Void)?
 
   private let rowsStack = NSStackView()
   private let countLabel = NSTextField(labelWithString: "")
@@ -67,6 +84,8 @@ final class HistoryWindowController: NSWindowController {
     window.titleVisibility = .hidden
     window.isMovableByWindowBackground = true
     window.isReleasedWhenClosed = false
+    window.isOpaque = false
+    window.backgroundColor = .clear
     window.minSize = NSSize(width: 420, height: 320)
     super.init(window: window)
     buildUI()
@@ -86,9 +105,7 @@ final class HistoryWindowController: NSWindowController {
       }
       if !hasBeenPositioned || !isOnScreen {
         hasBeenPositioned = true
-        let screen = NSScreen.screens.first {
-          $0.frame.contains(NSEvent.mouseLocation)
-        } ?? NSScreen.main
+        let screen = ScreenPlacement.screenForMouse()
         if let visible = screen?.visibleFrame {
           let size = window.frame.size
           window.setFrameOrigin(
@@ -105,11 +122,7 @@ final class HistoryWindowController: NSWindowController {
   private func buildUI() {
     guard let window = window else { return }
 
-    let background = NSVisualEffectView()
-    background.material = .sidebar
-    background.blendingMode = .behindWindow
-    background.state = .active
-    background.translatesAutoresizingMaskIntoConstraints = false
+    let background = Glass.makeGlassPanelChrome(frame: window.contentView?.bounds ?? .zero)
 
     let scroll = NSScrollView()
     scroll.hasVerticalScroller = true
@@ -139,11 +152,6 @@ final class HistoryWindowController: NSWindowController {
     window.contentView = background
 
     NSLayoutConstraint.activate([
-      background.leadingAnchor.constraint(equalTo: window.contentView!.leadingAnchor),
-      background.trailingAnchor.constraint(equalTo: window.contentView!.trailingAnchor),
-      background.topAnchor.constraint(equalTo: window.contentView!.topAnchor),
-      background.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor),
-
       header.topAnchor.constraint(equalTo: background.topAnchor),
       header.leadingAnchor.constraint(equalTo: background.leadingAnchor),
       header.trailingAnchor.constraint(equalTo: background.trailingAnchor),
@@ -341,7 +349,13 @@ final class HistoryWindowController: NSWindowController {
     metaLabel.alignment = .right
     metaLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
-    let row = HistoryRowView(views: [nameLabel, statusLabel, metaLabel])
+    let rerunButton = HistoryRerunButton(record: record)
+    rerunButton.target = self
+    rerunButton.action = #selector(rerunRecord(_:))
+    rerunButton.setContentHuggingPriority(.required, for: .horizontal)
+    rerunButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+    let row = HistoryRowView(views: [nameLabel, statusLabel, metaLabel, rerunButton])
     row.orientation = .horizontal
     row.alignment = .centerY
     row.spacing = 10
@@ -349,6 +363,10 @@ final class HistoryWindowController: NSWindowController {
     row.distribution = .fill
     row.edgeInsets = NSEdgeInsets(top: 11, left: 20, bottom: 11, right: 20)
     return row
+  }
+
+  @objc private func rerunRecord(_ sender: HistoryRerunButton) {
+    onRerun?(sender.record)
   }
 
   private static func statusColor(_ status: TimerRecordStatus) -> NSColor {

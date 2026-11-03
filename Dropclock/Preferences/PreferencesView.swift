@@ -71,6 +71,10 @@ struct PreferencesView: View {
     .background(GlassBackground(material: .sidebar).ignoresSafeArea())
     .onAppear {
       viewModel.loadPreferences()
+      viewModel.refreshPermissionStatus()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      viewModel.refreshPermissionStatus()
     }
     .fileImporter(
       isPresented: $isShowingSoundImporter,
@@ -85,15 +89,6 @@ struct PreferencesView: View {
         print("File import failed: \(error)")
       }
     }
-    .onChangeCompat(
-      viewModel.allowReminders, publisher: viewModel.$allowReminders
-    ) { newValue in
-      if newValue {
-        Task {
-          await viewModel.ensureReminderAccess()
-        }
-      }
-    }
   }
 
   // MARK: - 侧栏
@@ -104,7 +99,7 @@ struct PreferencesView: View {
         Image(systemName: "timer")
           .font(.system(size: 12, weight: .semibold))
           .foregroundStyle(.secondary)
-        Text("Dropclock")
+        Text("KLock")
           .font(.system(size: 13, weight: .semibold))
       }
       .padding(.horizontal, 9)
@@ -136,40 +131,49 @@ struct PreferencesView: View {
   // MARK: - 内容区
 
   private var contentPane: some View {
-    ScrollViewReader { proxy in
-      ScrollView {
-        VStack(alignment: .leading, spacing: 20) {
-          // 顶部锚点：窗口显示时强制回到这里，
-          // 否则 AppKit 的焦点/状态恢复会把内容滚下去，页头被卷出视野
-          Color.clear.frame(height: 0).id("contentTop")
+    GeometryReader { geometry in
+      ScrollViewReader { proxy in
+        ScrollView {
+          VStack(alignment: .leading, spacing: 0) {
+            // 锚点放在内容边距之外，短页和可滚动页回到同一顶部位置。
+            Color.clear.frame(height: 0).id("contentTop")
 
-          VStack(alignment: .leading, spacing: 3) {
-          Text(currentTab.label)
-            .font(.system(size: 17, weight: .semibold))
-          Text(currentTab.subtitle)
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 20) {
+              VStack(alignment: .leading, spacing: 3) {
+                Text(currentTab.label)
+                  .font(.system(size: 17, weight: .semibold))
+                Text(currentTab.subtitle)
+                  .font(.system(size: 11))
+                  .foregroundStyle(.secondary)
+              }
+              .padding(.bottom, 2)
+
+              switch selectedTab {
+              case .general:
+                generalSettingsView
+              case .reminders:
+                reminderSettingsView
+              case .timers:
+                timerSettingsView
+              }
+            }
+            // 给滚动条保留空间，切换长短页面时卡片宽度保持一致。
+            .frame(width: max(0, geometry.size.width - 64), alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.top, 36)
+            .padding(.bottom, 28)
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.bottom, 2)
-
-          switch selectedTab {
-          case .general:
-            generalSettingsView
-          case .reminders:
-            reminderSettingsView
-          case .timers:
-            timerSettingsView
+        .onAppear {
+          // 等窗口完成首轮布局，避免 AppKit 恢复焦点后又把长页面向下卷动。
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            proxy.scrollTo("contentTop", anchor: .top)
           }
         }
-        .padding(.horizontal, 24)
-        // 和侧栏标题（top 38）对齐，视觉上一条基线
-        .padding(.top, 36)
-        .padding(.bottom, 28)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      }
-      .onAppear { proxy.scrollTo("contentTop", anchor: .top) }
-      .onChange(of: selectedTab) { _ in
-        proxy.scrollTo("contentTop", anchor: .top)
+        .onChange(of: selectedTab) { _ in
+          proxy.scrollTo("contentTop", anchor: .top)
+        }
       }
     }
   }
@@ -179,7 +183,7 @@ struct PreferencesView: View {
       SettingsSection(title: "启动与菜单栏") {
         SettingsRow(
           title: "登录时启动", showsTopDivider: false,
-          helpText: "登录 Mac 时自动启动 Dropclock。"
+          helpText: "登录 Mac 时自动启动 KLock。"
         ) {
           Toggle("", isOn: $viewModel.startAtLogin)
             .toggleStyle(SwitchToggleStyle())
@@ -263,23 +267,6 @@ struct PreferencesView: View {
               }
           }
         }
-        SettingsRow(
-          title: "系统通知",
-          helpText:
-            "未授权时，计时结束只会弹出应用内的提醒卡片，不会进入通知中心。"
-        ) {
-          HStack(spacing: 8) {
-            Text(notificationStatusText)
-              .font(.system(size: 12))
-              .foregroundColor(.secondary)
-            if viewModel.notificationsAuthorized == false {
-              Button("去开启") {
-                viewModel.openNotificationSettings()
-              }
-              .font(.system(size: 12))
-            }
-          }
-        }
       }
       .padding(.top, 10)
 
@@ -346,32 +333,70 @@ struct PreferencesView: View {
     VStack(spacing: 20) {
       SettingsSection(title: "提醒事项") {
         SettingsRow(
-          title: "允许创建提醒事项", showsTopDivider: false,
-          helpText:
-            "开启后，每个新建的计时器都会在「提醒事项」中创建一条提醒。受提醒事项机制限制，时间会向上取整到整分钟。"
+          title: "为什么需要权限",
+          subtitle: "授权后可将计时器同步到系统「提醒事项」。不允许时仍可使用应用内提醒卡片，只是不再同步。",
+          showsTopDivider: false
         ) {
-          Toggle("", isOn: $viewModel.allowReminders)
+          EmptyView()
+        }
+        SettingsRow(
+          title: "允许创建提醒事项",
+          subtitle: "新建计时器时同步到系统提醒事项"
+        ) {
+          Toggle("", isOn: Binding(
+            get: { viewModel.allowReminders },
+            set: { enabled in
+              viewModel.allowReminders = enabled
+              viewModel.savePreferences()
+              if enabled {
+                Task {
+                  await viewModel.ensureReminderAccessAndFetchLists()
+                }
+              }
+            }
+          ))
             .toggleStyle(SwitchToggleStyle())
             .labelsHidden()
             .frame(width: 40)
-            .onChangeCompat(viewModel.allowReminders, publisher: viewModel.$allowReminders) { _ in
-              viewModel.savePreferences()
+        }
+        if let issue = viewModel.reminderAccessIssue {
+          SettingsRow(title: "提醒事项权限", subtitle: issue, subtitleColor: .orange) {
+            Button("前往设置") {
+              viewModel.openReminderSettings()
             }
+            .font(.system(size: 12))
+          }
         }
         SettingsRow(
           title: "提醒列表",
           helpText: "选择提醒要创建到哪个列表。"
         ) {
-          Picker("", selection: $viewModel.selectedList) {
-            ForEach(viewModel.reminderLists, id: \.self) { list in
-              Text(list.title).tag(list as EKCalendar?)
+          if viewModel.reminderAccessIssue != nil {
+            Text("未获完整授权")
+              .font(.system(size: 11.5))
+              .foregroundStyle(.secondary)
+          } else if !viewModel.allowReminders {
+            Text("开启后选择提醒列表")
+              .font(.system(size: 11.5))
+              .foregroundStyle(.secondary)
+          } else if viewModel.reminderLists.isEmpty {
+            Text("暂无可选列表")
+              .font(.system(size: 11.5))
+              .foregroundStyle(.secondary)
+          } else {
+            Picker("", selection: Binding(
+              get: { viewModel.selectedList },
+              set: { list in
+                viewModel.selectedList = list
+                viewModel.savePreferences()
+              }
+            )) {
+              ForEach(viewModel.reminderLists, id: \.self) { list in
+                Text(list.title).tag(list as EKCalendar?)
+              }
             }
-          }
-          .pickerStyle(MenuPickerStyle())
-          .frame(width: 140, alignment: .trailing)
-          .disabled(!viewModel.allowReminders)
-          .onChangeCompat(viewModel.$selectedList) { _ in
-            viewModel.savePreferences()
+            .pickerStyle(MenuPickerStyle())
+            .frame(width: 140, alignment: .trailing)
           }
         }
         SettingsRow(
@@ -416,6 +441,26 @@ struct PreferencesView: View {
             }
             Text("\(Int(viewModel.shortTimerThresholdMinutes)) 分钟")
               .frame(width: 50, alignment: .trailing)
+          }
+        }
+      }
+
+      SettingsSection(title: "系统通知") {
+        SettingsRow(
+          title: "通知权限",
+          subtitle: "未允许时仍会显示应用内提醒卡片",
+          showsTopDivider: false
+        ) {
+          HStack(spacing: 8) {
+            Text(notificationStatusText)
+              .font(.system(size: 12))
+              .foregroundColor(viewModel.notificationsAuthorized == false ? .orange : .secondary)
+            if viewModel.notificationsAuthorized == false {
+              Button("去开启") {
+                viewModel.openNotificationSettings()
+              }
+              .font(.system(size: 12))
+            }
           }
         }
       }
@@ -517,8 +562,7 @@ struct PreferencesView: View {
 
         SettingsRow(
           title: "启用 5 分钟模式",
-          helpText:
-            "开启后，按住 Control 拖拽将以 5 分钟为步进。"
+          subtitle: "按住 Control 拖拽，以 5 分钟为步进"
         ) {
           Toggle("", isOn: $viewModel.allowFiveMinuteMode)
             .toggleStyle(SwitchToggleStyle())
@@ -530,8 +574,7 @@ struct PreferencesView: View {
         }
         SettingsRow(
           title: "启用秒模式",
-          helpText:
-            "开启后，按住 Shift 拖拽仅以秒为步进。"
+          subtitle: "按住 Shift 拖拽，以秒为步进"
         ) {
           Toggle("", isOn: $viewModel.allowSecondsMode)
             .toggleStyle(SwitchToggleStyle())
@@ -573,14 +616,14 @@ private struct SettingsTabButton: View {
       .padding(.horizontal, 9)
       .padding(.vertical, 7)
       .background(
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
+        RoundedRectangle(cornerRadius: Glass.sidebarSelectionRadius, style: .continuous)
           .fill(
             isSelected
               ? Glass.selectionFill(scheme)
               : (isHovering ? Color.primary.opacity(0.05) : Color.clear)
           )
       )
-      .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+      .contentShape(RoundedRectangle(cornerRadius: Glass.sidebarSelectionRadius, style: .continuous))
     }
     .buttonStyle(.plain)
     .onHover { isHovering = $0 }

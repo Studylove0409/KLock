@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+  <title>KLock menu bar template</title>
+  <circle cx="9" cy="9" r="6.6" fill="none" stroke="#000" stroke-width="1.3"/>
+  <path d="M 6.379 7.165 L 9 9 L 12.854 6.775" fill="none" stroke="#000" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

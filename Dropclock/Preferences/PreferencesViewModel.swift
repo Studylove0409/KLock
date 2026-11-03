@@ -73,6 +73,26 @@ class PreferencesViewModel: ObservableObject {
 
   /// nil = 还在检测；true/false = 系统通知是否已授权
   @Published var notificationsAuthorized: Bool?
+  @Published private(set) var reminderAuthorizationStatus: EKAuthorizationStatus = .notDetermined
+  @Published private(set) var reminderAccessRequestFailed = false
+  private var isRequestingReminderAccess = false
+
+  var reminderAccessIssue: String? {
+    switch reminderAuthorizationStatus {
+    case .denied:
+      return "系统已拒绝访问提醒事项，请在系统设置中允许访问。"
+    case .restricted:
+      return "提醒事项访问受到系统限制，请检查系统设置。"
+    case .writeOnly:
+      return "当前权限无法读取提醒列表，请在系统设置中允许完整访问。"
+    case .notDetermined where reminderAccessRequestFailed:
+      return "未能获取提醒事项权限，请检查系统设置后重试。"
+    case .notDetermined, .fullAccess:
+      return nil
+    @unknown default:
+      return "无法确认提醒事项权限，请检查系统设置。"
+    }
+  }
 
   private struct Keys {
     static let allowReminders = "allowReminders"
@@ -100,6 +120,24 @@ class PreferencesViewModel: ObservableObject {
     static let customAlarmSoundName = "customAlarmSoundName"
   }
 
+  static func registerDefaultPreferences() {
+    let defaults = UserDefaults.standard
+    defaults.register(defaults: [
+      Keys.deleteReminders: true,
+      Keys.allowFiveMinuteMode: true,
+      Keys.showDragIndicator: true,
+      Keys.shortTimerThresholdMinutes: 1.0,
+    ])
+
+    // 旧版可能把未设置时的 0 保存下来；修正滑块之外的历史值。
+    let storedThreshold = defaults.double(forKey: Keys.shortTimerThresholdMinutes)
+    let validThreshold = storedThreshold.isFinite
+      ? min(max(storedThreshold, 1), 60) : 1
+    if storedThreshold != validThreshold {
+      defaults.set(validThreshold, forKey: Keys.shortTimerThresholdMinutes)
+    }
+  }
+
   init() {
     loadPreferences()
     startAtLogin = SMAppService.mainApp.status == .enabled
@@ -117,24 +155,67 @@ class PreferencesViewModel: ObservableObject {
     NotificationManager.shared.openSystemNotificationSettings()
   }
 
+  func openReminderSettings() {
+    guard let url = URL(
+      string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders"
+    ) else { return }
+    NSWorkspace.shared.open(url)
+  }
+
+  @MainActor
+  func refreshPermissionStatus() {
+    refreshNotificationStatus()
+    refreshReminderAuthorizationAndLists()
+  }
+
   private func loadReminderData() {
     Task {
       await ensureReminderAccessAndFetchLists()
     }
   }
 
-  private func ensureReminderAccessAndFetchLists() async {
-    if allowReminders {
-      await ensureReminderAccess()
-      await fetchReminderLists()
+  @MainActor
+  func ensureReminderAccessAndFetchLists() async {
+    guard !isRequestingReminderAccess else { return }
+    if allowReminders && RemindersManager.shared.checkAuthorizationStatus() == .notDetermined {
+      isRequestingReminderAccess = true
+      reminderAccessRequestFailed = false
+      let granted = await RemindersManager.shared.requestAccess()
+      isRequestingReminderAccess = false
+      reminderAccessRequestFailed = !granted
+        && RemindersManager.shared.checkAuthorizationStatus() == .notDetermined
+    }
+    refreshReminderAuthorizationAndLists()
+  }
+
+  @MainActor
+  private func refreshReminderAuthorizationAndLists() {
+    let status = RemindersManager.shared.checkAuthorizationStatus()
+    reminderAuthorizationStatus = status
+
+    let canReadReminderLists: Bool
+    if #available(macOS 14, *) {
+      canReadReminderLists = status == .fullAccess
+    } else {
+      canReadReminderLists = status == .authorized
+    }
+
+    if canReadReminderLists {
+      reminderAccessRequestFailed = false
+      reminderLists = RemindersManager.shared.fetchReminderLists()
       loadSelectedList()
     } else {
-      await fetchReminderLists()
-      loadSelectedList()
+      reminderLists = []
+      selectedList = nil
+      if (status != .notDetermined || reminderAccessRequestFailed) && allowReminders {
+        allowReminders = false
+        persist(false, forKey: Keys.allowReminders)
+      }
     }
   }
 
   func loadPreferences() {
+    Self.registerDefaultPreferences()
     allowReminders = UserDefaults.standard.bool(forKey: Keys.allowReminders)
     deleteReminders = UserDefaults.standard.bool(forKey: Keys.deleteReminders)
     allowCustomNames = UserDefaults.standard.bool(forKey: Keys.allowCustomNames)
@@ -177,11 +258,11 @@ class PreferencesViewModel: ObservableObject {
   private func loadSelectedList() {
     let storedID = UserDefaults.standard.string(
       forKey: RemindersManager.selectedReminderListKey)
-    if let storedList = RemindersManager.shared.fetchReminderLists().first(
+    if let storedList = reminderLists.first(
       where: { $0.calendarIdentifier == storedID })
     {
       selectedList = storedList
-    } else if reminderLists.isEmpty == false {
+    } else {
       selectedList = reminderLists.first
     }
   }
@@ -248,27 +329,6 @@ class PreferencesViewModel: ObservableObject {
       }
   }
 
-  func ensureReminderAccess() async {
-    let status = RemindersManager.shared.checkAuthorizationStatus()
-
-    switch status {
-    case .notDetermined:
-      let granted = await RemindersManager.shared.requestAccess()
-      if !granted {
-        print("Access denied. Please enable it in System Settings.")
-      }
-
-    case .denied:
-      print(
-        "Reminders access denied. Ask the user to enable it in System Settings."
-      )
-    case .fullAccess, .writeOnly:
-      break
-    default:
-      print("Unknown authorization status.")
-    }
-  }
-
   private func saveDragLineColor() {
     let nsColor = NSColor(dragLineColor)
     guard
@@ -279,13 +339,6 @@ class PreferencesViewModel: ObservableObject {
       return
     }
     UserDefaults.standard.set(colorData, forKey: "dragLineColor")
-  }
-
-  func fetchReminderLists() async {
-    await MainActor.run { [weak self] in
-      guard let self = self else { return }
-      self.reminderLists = RemindersManager.shared.fetchReminderLists()
-    }
   }
 
   func refreshAvailableAlarmSounds() {
