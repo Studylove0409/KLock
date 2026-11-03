@@ -11,7 +11,7 @@ mkdir -p "$TEST_HOME/Library/Preferences"
 
 swiftc -parse-as-library -module-cache-path "$CACHE" -sdk "$SDK" \
   -target arm64-apple-macos13.0 -swift-version 5 \
-  Dropclock/Preferences/PreferencesViewModel.swift \
+  KLock/Preferences/PreferencesViewModel.swift \
   Tests/Preferences/main.swift \
   -o "$OUT"
 

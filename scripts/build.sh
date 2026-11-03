@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 不依赖 Xcode 打包可运行的 .app（仅用 Command Line Tools）。
-# 用法: bash scripts/build.sh [--run]
+# 用法: bash scripts/build.sh [--run] [--install] [--force]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP="build/Dropclock.app"
+APP="build/KLock.app"
 SDK="$(xcrun --show-sdk-path)"
 CACHE="${CLANG_MODULE_CACHE_PATH:-/private/tmp/dropclock-module-cache}"
 
@@ -12,8 +12,8 @@ echo "==> 编译"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 swiftc -O -parse-as-library -module-cache-path "$CACHE" -sdk "$SDK" -target arm64-apple-macos13.0 \
   -swift-version 5 \
-  -o "$APP/Contents/MacOS/Dropclock" \
-  $(find Dropclock -name "*.swift")
+  -o "$APP/Contents/MacOS/KLock" \
+  $(find KLock -name "*.swift")
 
 echo "==> 写入 Info.plist"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
@@ -26,7 +26,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<key>CFBundleDisplayName</key>
 	<string>KLock</string>
 	<key>CFBundleExecutable</key>
-	<string>Dropclock</string>
+	<string>KLock</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.Wrkx.Dropclock.local</string>
 	<key>CFBundleIconFile</key>
@@ -56,7 +56,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 
 echo "==> 拷贝音频资源"
-cp Dropclock/Sounds/*.mp3 "$APP/Contents/Resources/"
+cp KLock/Sounds/*.mp3 "$APP/Contents/Resources/"
 
 echo "==> 拷贝图标"
 if [[ -f assets/AppIcon.icns ]]; then
@@ -74,7 +74,8 @@ fi
 echo "==> 临时签名"
 # Desktop 属于 iCloud 同步目录；在本地副本签名并严格验证，再用 ditto 覆盖回写。
 # 保留验签副本，整个构建过程无需递归删除已有应用目录。
-VERIFIED_APP="/private/tmp/Dropclock-DeskMinder-Verified.app"
+VERIFIED_DIR="$(mktemp -d /private/tmp/klock-signing.XXXXXX)"
+VERIFIED_APP="$VERIFIED_DIR/KLock.app"
 ditto "$APP" "$VERIFIED_APP"
 xattr -cr "$VERIFIED_APP"
 codesign --force --sign - "$VERIFIED_APP"
@@ -103,7 +104,7 @@ if $RUN; then
 fi
 
 if $INSTALL; then
-  TARGET="/Applications/Dropclock.app"
+  TARGET="/Applications/KLock.app"
   if [[ -d "$TARGET" ]] && ! $FORCE; then
     echo "!! $TARGET 已存在，未覆盖。确认替换请追加 --force"
   else

@@ -49,20 +49,22 @@ menu bar timer · drop to clock · reminder · KLock · 菜单栏计时器 · ma
 系统要求：**macOS 13.0（Ventura）及以上**。构建只用 Xcode Command Line Tools，不需要打开 Xcode。
 
 ```bash
-git clone <本仓库地址>
-cd Dropclock
+git clone https://github.com/Studylove0409/KLock.git
+cd KLock
 bash scripts/build.sh
 ```
 
-构建产物在 `build/Dropclock.app`（bundle 名沿用构建脚本，当前仍叫 Dropclock）。脚本还支持：
+构建产物在 `build/KLock.app`，可执行文件为 `KLock`。脚本还支持：
 
 | 参数 | 作用 |
 | --- | --- |
 | `--run` | 构建后直接启动（会先结束已有的同名进程） |
-| `--install` | 拷贝到 `/Applications/Dropclock.app` |
+| `--install` | 拷贝到 `/Applications/KLock.app` |
 | `--force` | 配合 `--install`，覆盖已存在的应用 |
 
-也可以直接双击 `build/Dropclock.app` 运行。本轮不提供预编译下载包。
+也可以直接双击 `build/KLock.app` 运行。本轮不提供预编译下载包。
+
+源码目录为 `KLock/`，也可以通过 `KLock.xcodeproj` 中的 `KLock` scheme 构建。
 
 ## 使用
 

@@ -9,7 +9,7 @@ CACHE="${CLANG_MODULE_CACHE_PATH:-/private/tmp/dropclock-module-cache}"
 SOURCES=()
 while IFS= read -r -d '' file; do
   SOURCES+=("$file")
-done < <(find Dropclock -name '*.swift' -print0)
+done < <(find KLock -name '*.swift' -print0)
 
 swiftc -DDROPCLOCK_TESTING -module-cache-path "$CACHE" -sdk "$SDK" \
   -target arm64-apple-macos13.0 -swift-version 5 \

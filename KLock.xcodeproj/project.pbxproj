@@ -7,26 +7,26 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		DD533BD42D69329200DCDAE7 /* Dropclock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Dropclock.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DD533BD42D69329200DCDAE7 /* KLock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KLock.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		DD0048322D6A67100049E6F9 /* Exceptions for "Dropclock" folder in "Dropclock" target */ = {
+		DD0048322D6A67100049E6F9 /* Exceptions for "KLock" folder in "KLock" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = DD533BD32D69329200DCDAE7 /* Dropclock */;
+			target = DD533BD32D69329200DCDAE7 /* KLock */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		DD533BD62D69329200DCDAE7 /* Dropclock */ = {
+		DD533BD62D69329200DCDAE7 /* KLock */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				DD0048322D6A67100049E6F9 /* Exceptions for "Dropclock" folder in "Dropclock" target */,
+				DD0048322D6A67100049E6F9 /* Exceptions for "KLock" folder in "KLock" target */,
 			);
-			path = Dropclock;
+			path = KLock;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -45,7 +45,7 @@
 		DD533BCB2D69329200DCDAE7 = {
 			isa = PBXGroup;
 			children = (
-				DD533BD62D69329200DCDAE7 /* Dropclock */,
+				DD533BD62D69329200DCDAE7 /* KLock */,
 				DD533BD52D69329200DCDAE7 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -53,7 +53,7 @@
 		DD533BD52D69329200DCDAE7 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				DD533BD42D69329200DCDAE7 /* Dropclock.app */,
+				DD533BD42D69329200DCDAE7 /* KLock.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,9 +61,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		DD533BD32D69329200DCDAE7 /* Dropclock */ = {
+		DD533BD32D69329200DCDAE7 /* KLock */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = DD533BE32D69329300DCDAE7 /* Build configuration list for PBXNativeTarget "Dropclock" */;
+			buildConfigurationList = DD533BE32D69329300DCDAE7 /* Build configuration list for PBXNativeTarget "KLock" */;
 			buildPhases = (
 				DD533BD02D69329200DCDAE7 /* Sources */,
 				DD533BD12D69329200DCDAE7 /* Frameworks */,
@@ -74,13 +74,13 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				DD533BD62D69329200DCDAE7 /* Dropclock */,
+				DD533BD62D69329200DCDAE7 /* KLock */,
 			);
-			name = Dropclock;
+			name = KLock;
 			packageProductDependencies = (
 			);
-			productName = Dropclock;
-			productReference = DD533BD42D69329200DCDAE7 /* Dropclock.app */;
+			productName = KLock;
+			productReference = DD533BD42D69329200DCDAE7 /* KLock.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -98,7 +98,7 @@
 					};
 				};
 			};
-			buildConfigurationList = DD533BCF2D69329200DCDAE7 /* Build configuration list for PBXProject "Dropclock" */;
+			buildConfigurationList = DD533BCF2D69329200DCDAE7 /* Build configuration list for PBXProject "KLock" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -112,7 +112,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				DD533BD32D69329200DCDAE7 /* Dropclock */,
+				DD533BD32D69329200DCDAE7 /* KLock */,
 			);
 		};
 /* End PBXProject section */
@@ -261,14 +261,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Dropclock/Dropclock.entitlements;
+				CODE_SIGN_ENTITLEMENTS = KLock/KLock.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"Dropclock/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"KLock/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Dropclock/Info.plist;
+				INFOPLIST_FILE = KLock/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = KLock;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -291,14 +291,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Dropclock/Dropclock.entitlements;
+				CODE_SIGN_ENTITLEMENTS = KLock/KLock.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"Dropclock/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"KLock/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Dropclock/Info.plist;
+				INFOPLIST_FILE = KLock/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = KLock;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -319,7 +319,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		DD533BCF2D69329200DCDAE7 /* Build configuration list for PBXProject "Dropclock" */ = {
+		DD533BCF2D69329200DCDAE7 /* Build configuration list for PBXProject "KLock" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DD533BE12D69329300DCDAE7 /* Debug */,
@@ -328,7 +328,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		DD533BE32D69329300DCDAE7 /* Build configuration list for PBXNativeTarget "Dropclock" */ = {
+		DD533BE32D69329300DCDAE7 /* Build configuration list for PBXNativeTarget "KLock" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DD533BE42D69329300DCDAE7 /* Debug */,

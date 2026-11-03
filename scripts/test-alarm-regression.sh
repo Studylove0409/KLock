@@ -8,10 +8,10 @@ OUT="$(mktemp -t dropclock-alarm-tests)"
 CACHE="${CLANG_MODULE_CACHE_PATH:-/private/tmp/dropclock-module-cache}"
 SOURCES=()
 while IFS= read -r -d '' file; do
-  if [[ "$file" != "Dropclock/Panels/ReminderAlertPanel.swift" ]]; then
+  if [[ "$file" != "KLock/Panels/ReminderAlertPanel.swift" ]]; then
     SOURCES+=("$file")
   fi
-done < <(find Dropclock -name '*.swift' -print0)
+done < <(find KLock -name '*.swift' -print0)
 
 swiftc -DDROPCLOCK_TESTING -Xfrontend -disable-access-control \
   -module-cache-path "$CACHE" -sdk "$SDK" \

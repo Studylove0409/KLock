@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "DD533BD32D69329200DCDAE7"
-               BuildableName = "Dropclock.app"
-               BlueprintName = "Dropclock"
-               ReferencedContainer = "container:Dropclock.xcodeproj">
+               BuildableName = "KLock.app"
+               BlueprintName = "KLock"
+               ReferencedContainer = "container:KLock.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "DD533BD32D69329200DCDAE7"
-            BuildableName = "Dropclock.app"
-            BlueprintName = "Dropclock"
-            ReferencedContainer = "container:Dropclock.xcodeproj">
+            BuildableName = "KLock.app"
+            BlueprintName = "KLock"
+            ReferencedContainer = "container:KLock.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -62,9 +62,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "DD533BD32D69329200DCDAE7"
-            BuildableName = "Dropclock.app"
-            BlueprintName = "Dropclock"
-            ReferencedContainer = "container:Dropclock.xcodeproj">
+            BuildableName = "KLock.app"
+            BlueprintName = "KLock"
+            ReferencedContainer = "container:KLock.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
